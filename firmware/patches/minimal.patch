@@ -1,0 +1,13 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 1111111..2222222 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1,6 +1,14 @@
+ cmake_minimum_required(VERSION 3.13)
+ project(InfiniTime)
+ 
++# >>> Praxiom additions
++message(STATUS "Including Praxiom CMake additions if present")
++include(${CMAKE_SOURCE_DIR}/firmware/CMakeLists.additions.txt OPTIONAL)
++# <<< Praxiom additions
++

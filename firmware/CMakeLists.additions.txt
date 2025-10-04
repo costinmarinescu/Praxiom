@@ -1,0 +1,7 @@
+option(PRAXIOM_ENABLE "Enable Praxiom Health modules" ON)
+option(INFITIME_DISABLE_GAMES "Remove Games from menu" ON)
+if(PRAXIOM_ENABLE)
+  add_subdirectory(firmware/praxface)
+  add_subdirectory(firmware/praxsettings)
+  add_subdirectory(firmware/ble)
+endif()

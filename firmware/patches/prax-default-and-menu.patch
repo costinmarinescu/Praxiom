@@ -1,0 +1,17 @@
+diff --git a/src/displayapp/DisplayApp.cpp b/src/displayapp/DisplayApp.cpp
+index 3333333..4444444 100644
+--- a/src/displayapp/DisplayApp.cpp
++++ b/src/displayapp/DisplayApp.cpp
+@@ -42,6 +42,8 @@ DisplayApp::DisplayApp(...) {
+-  currentScreen = new ScreenDigital(); // original
++  // Praxiom default watchface
++  currentScreen = new PraxWatchFace();
+ }
+diff --git a/src/displayapp/screens/SettingsMenu.cpp b/src/displayapp/screens/SettingsMenu.cpp
+index 5555555..6666666 100644
+--- a/src/displayapp/screens/SettingsMenu.cpp
++++ b/src/displayapp/screens/SettingsMenu.cpp
+@@ -101,6 +101,8 @@ void SettingsMenu::Build() {
+   // existing entries...
++  AddEntry("Praxiom Settings", [](){ displayApp->LoadScreen(new PraxSettingsScreen()); });
+ }
