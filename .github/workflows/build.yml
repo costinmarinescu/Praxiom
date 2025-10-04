@@ -7,6 +7,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive   # <<< FIX: pull libs/lvgl, libs/littlefs, etc.
 
       # Toolchain & build deps
       - name: Install ARM toolchain & build deps
