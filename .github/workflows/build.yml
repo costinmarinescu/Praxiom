@@ -14,6 +14,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  NRF5_SDK_VERSION: 17.1.0_ddde560
+  NRF5_SDK_DIRNAME: nRF5_SDK_17.1.0_ddde560
+  NRF5_SDK_URL: https://developer.nordicsemi.com/nRF5_SDK/nRF5_SDK_v17.x.x/nRF5_SDK_17.1.0_ddde560.zip
+  NRF5_SDK_PATH: ${{ github.workspace }}/_deps/nRF5_SDK_17.1.0_ddde560
+
 jobs:
   build:
     runs-on: ubuntu-22.04
@@ -25,48 +31,41 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      - name: Install ARM toolchain and build deps
+      - name: Install toolchain & deps
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             cmake ninja-build \
             gcc-arm-none-eabi binutils-arm-none-eabi \
-            libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib
+            libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib \
+            unzip curl
+
+      - name: Cache nRF5 SDK
+        id: nrf5_cache
+        uses: actions/cache@v4
+        with:
+          path: _deps/${{ env.NRF5_SDK_DIRNAME }}
+          key: nrf5sdk-${{ env.NRF5_SDK_VERSION }}
+
+      - name: Fetch nRF5 SDK (if cache miss)
+        if: steps.nrf5_cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p _deps
+          cd _deps
+          echo "Downloading nRF5 SDK ${NRF5_SDK_VERSION}..."
+          curl -L -o nrf5.zip "${NRF5_SDK_URL}"
+          unzip -q nrf5.zip
+          rm -f nrf5.zip
+          ls -la
 
       - name: Detect ARM toolchain root
         id: detect
         shell: bash
         run: |
-          # Find the installed cross-compiler and derive its root (/usr)
           BIN="$(which arm-none-eabi-gcc)"
           ROOT="$(dirname "$(dirname "$BIN")")"
-          echo "arm-none-eabi-gcc at: $BIN"
-          echo "Toolchain root: $ROOT"
+          echo "arm-none-eabi-gcc: $BIN"
+          echo "toolchain root:    $ROOT"
           echo "toolchain_root=$ROOT" >> "$GITHUB_OUTPUT"
 
-      - name: Configure (CMake + Ninja)
-        run: |
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-            -DARM_NONE_EABI_TOOLCHAIN_PATH='${{ steps.detect.outputs.toolchain_root }}'
-
-      - name: Build
-        run: cmake --build build -j"$(nproc)"
-
-      - name: List build outputs
-        run: |
-          echo "==> Firmware outputs (build/src)"
-          ls -lAh build/src || true
-          echo "==> Map files (if generated)"
-          find build -name '*.map' -print || true
-
-      - name: Upload firmware artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: praxiom-firmware-${{ github.sha }}
-          if-no-files-found: error
-          path: |
-            build/src/*.out
-            build/src/*.zip
-            build/src/*.bin
-            build/src/*.hex
-            build/**/*.map
+      - n
