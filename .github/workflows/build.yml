@@ -1,20 +1,50 @@
 name: build-praxiom-firmware
 on: [push]
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Clone InfiniTime & build
+
+      - name: Install ARM toolchain & build deps
         run: |
-          git clone https://github.com/InfiniTimeOrg/InfiniTime.git
-          rsync -av firmware/ InfiniTime/firmware/
-          cd InfiniTime
-          git apply firmware/patches/minimal.patch || true
-          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DPRAXIOM_ENABLE=ON -DINFITIME_DISABLE_GAMES=ON
-          cmake --build build -j
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi libnewlib-arm-none-eabi \
+                                  ninja-build cmake unzip curl
+
+      - name: Fetch Nordic nRF5 SDK 17.0.2
+        run: |
+          mkdir -p $HOME/sdk
+          cd $HOME/sdk
+          curl -L -o nrf5.zip https://developer.nordicsemi.com/nRF5_SDK/nRF5_SDK_v17.x.x/nRF5_SDK_17.0.2_d674dde.zip
+          unzip -q nrf5.zip
+          rm -f nrf5.zip
+          mv nRF5_SDK_17.0.2_d674dde nrf5
+
+      - name: Ensure Praxiom CMake include (idempotent)
+        run: |
+          # Add the include only if it's not already present
+          if ! grep -q 'firmware/CMakeLists.additions.txt' CMakeLists.txt; then
+            echo 'include(${CMAKE_SOURCE_DIR}/firmware/CMakeLists.additions.txt OPTIONAL)' >> CMakeLists.txt
+          fi
+
+      - name: Configure (Release + DFU + Praxiom flags)
+        run: |
+          cmake -B build -S . -G "Ninja" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DARM_NONE_EABI_TOOLCHAIN_PATH=/usr \
+            -DNRF5_SDK_PATH=$HOME/sdk/nrf5 \
+            -DPRAXIOM_ENABLE=ON \
+            -DINFITIME_DISABLE_GAMES=ON \
+            -DPRAXIOM_DEFAULT_WATCHFACE=ON \
+            -DBUILD_DFU=ON
+
+      - name: Build
+        run: cmake --build build -j
+
       - name: Upload DFU
         uses: actions/upload-artifact@v4
         with:
           name: praxiom-dfu
-          path: InfiniTime/build/pinetime-mcuboot-app-dfu.zip
+          path: build/pinetime-mcuboot-app-dfu.zip
