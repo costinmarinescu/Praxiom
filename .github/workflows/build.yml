@@ -1,20 +1,16 @@
-name: praxiom-firmware
+name: Build Praxiom Firmware (DFU-ready)
 
 on:
   push:
     branches: [ main ]
-    tags: [ 'v*' ]
   pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 env:
+  # nRF5 SDK to fetch/cache
   NRF5_SDK_VERSION: 17.1.0_ddde560
   NRF5_SDK_DIRNAME: nRF5_SDK_17.1.0_ddde560
   NRF5_SDK_URL: https://developer.nordicsemi.com/nRF5_SDK/nRF5_SDK_v17.x.x/nRF5_SDK_17.1.0_ddde560.zip
@@ -25,42 +21,64 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout
+      - name: Checkout (with submodules)
         uses: actions/checkout@v4
         with:
           submodules: recursive
           fetch-depth: 0
 
-      - name: Install toolchain & deps
+      # ------------------------------------------------------------------
+      # Tooling
+      # ------------------------------------------------------------------
+      - name: Install apt packages (ARM toolchain, build tools)
         run: |
+          set -eux
           sudo apt-get update
           sudo apt-get install -y \
             cmake ninja-build unzip curl \
             gcc-arm-none-eabi binutils-arm-none-eabi \
             libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib
 
-      - name: Setup Node (for lv_font_conv)
+      - name: Setup Node.js (for lv_font_conv)
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: 20
 
-      - name: Install lv_font_conv
-        id: lvfc
+      - name: Install lv_font_conv (global)
+        id: fontconv
         run: |
+          set -eux
           npm i -g lv_font_conv
-          which lv_font_conv
           echo "path=$(which lv_font_conv)" >> "$GITHUB_OUTPUT"
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Python deps for mcuboot imgtool + DFU packaging
+        run: |
+          set -eux
+          python3 -m pip install --upgrade --user pip
+          # Needed by tools/mcuboot/imgtool and DFU generation
+          python3 -m pip install --user click cbor2 intelhex cryptography pillow adafruit-nrfutil
+          # ensure ~/.local/bin is on PATH for subsequent steps
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # ------------------------------------------------------------------
+      # nRF5 SDK cache & fetch
+      # ------------------------------------------------------------------
       - name: Cache nRF5 SDK
-        id: nrf5_cache
+        id: cache-sdk
         uses: actions/cache@v4
         with:
           path: _deps/${{ env.NRF5_SDK_DIRNAME }}
           key: nrf5sdk-${{ env.NRF5_SDK_VERSION }}
 
-      - name: Fetch nRF5 SDK (if cache miss)
-        if: steps.nrf5_cache.outputs.cache-hit != 'true'
+      - name: Download nRF5 SDK (if cache miss)
+        if: steps.cache-sdk.outputs.cache-hit != 'true'
         run: |
+          set -eux
           mkdir -p _deps
           cd _deps
           echo "Downloading nRF5 SDK ${NRF5_SDK_VERSION}..."
@@ -69,41 +87,117 @@ jobs:
           rm -f nrf5.zip
           ls -la
 
-      - name: Detect ARM toolchain root
-        id: detect
-        shell: bash
+      # ------------------------------------------------------------------
+      # Configure & build
+      # ------------------------------------------------------------------
+      - name: Locate ARM toolchain
+        id: tc-path
         run: |
+          set -eux
           BIN="$(which arm-none-eabi-gcc)"
           ROOT="$(dirname "$(dirname "$BIN")")"
           echo "arm-none-eabi-gcc: $BIN"
           echo "toolchain root:    $ROOT"
           echo "toolchain_root=$ROOT" >> "$GITHUB_OUTPUT"
 
-      - name: Configure (CMake + Ninja)
+      - name: Configure (CMake, DFU & resources enabled)
         run: |
+          set -eux
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-            -DARM_NONE_EABI_TOOLCHAIN_PATH='${{ steps.detect.outputs.toolchain_root }}' \
+            -DARM_NONE_EABI_TOOLCHAIN_PATH='${{ steps.tc-path.outputs.toolchain_root }}' \
             -DNRF5_SDK_PATH='${{ env.NRF5_SDK_PATH }}' \
-            -DLV_FONT_CONV='${{ steps.lvfc.outputs.path }}'
+            -DLV_FONT_CONV='${{ steps.fontconv.outputs.path }}' \
+            -DBUILD_DFU=ON \
+            -DBUILD_RESOURCES=ON
 
       - name: Build
-        run: cmake --build build -j"$(nproc)"
-
-      - name: List build outputs
         run: |
-          echo "==> Firmware outputs (build/src)"
-          ls -lAh build/src || true
-          echo "==> Map files (if generated)"
-          find build -name '*.map' -print || true
+          set -eux
+          cmake --build build -j"$(nproc)"
+          echo "Built files:"
+          ls -la build/src | sed 's/^/  /'
 
-      - name: Upload artifacts
+      # ------------------------------------------------------------------
+      # Prepare Gadgetbridge-ready artifacts
+      #  - Unzip DFU zips into folders and upload folder contents so the
+      #    artifact itself is a single, usable DFU zip when downloaded.
+      #  - If app DFU zip wasn't generated by CMake, create it as fallback.
+      # ------------------------------------------------------------------
+      - name: Prepare DFU artifacts
+        id: prep
+        shell: bash
+        run: |
+          set -eux
+          mkdir -p artifacts/dfu-app artifacts/dfu-resources artifacts/dfu-recovery-loader
+
+          # Try to find DFU zips produced by CMake
+          APP_ZIP="$(ls build/src/pinetime-mcuboot-app-dfu-*.zip 2>/dev/null || true)"
+          RES_ZIP="$(ls build/src/infinitime-resources-*.zip 2>/dev/null || true)"
+          REC_ZIP="$(ls build/src/pinetime-mcuboot-recovery-loader-dfu-*.zip 2>/dev/null || true)"
+
+          # Fallback: create app DFU if missing (use adafruit-nrfutil)
+          if [[ -z "$APP_ZIP" ]]; then
+            # Prefer a versioned bin if present, else pick the single app image bin
+            APP_IMG="$(ls build/src/pinetime-mcuboot-app-image-*.bin 2>/dev/null || true)"
+            if [[ -z "$APP_IMG" ]]; then
+              APP_IMG="$(ls build/src/pinetime-mcuboot-app-image.bin 2>/dev/null || true)"
+            fi
+            if [[ -n "$APP_IMG" ]]; then
+              echo "No app DFU zip from CMake. Creating one via adafruit-nrfutil…"
+              # 0x0052 is the NRF52 device type used by InfiniTime builds
+              adafruit-nrfutil dfu genpkg --dev-type 0x0052 --application "$APP_IMG" build/src/pinetime-mcuboot-app-dfu.zip
+              APP_ZIP="build/src/pinetime-mcuboot-app-dfu.zip"
+            fi
+          fi
+
+          # Unpack into folders so uploaded artifact is directly usable
+          if [[ -n "$APP_ZIP" ]]; then
+            unzip -q "$APP_ZIP" -d artifacts/dfu-app
+            echo "app=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "app=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [[ -n "$RES_ZIP" ]]; then
+            unzip -q "$RES_ZIP" -d artifacts/dfu-resources
+            echo "res=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "res=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [[ -n "$REC_ZIP" ]]; then
+            unzip -q "$REC_ZIP" -d artifacts/dfu-recovery-loader
+            echo "rec=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "rec=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ------------------------------------------------------------------
+      # Upload artifacts (each becomes a single usable DFU zip when downloaded)
+      # ------------------------------------------------------------------
+      - name: Upload DFU - App (Gadgetbridge-ready)
+        if: steps.prep.outputs.app == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: praxiom-firmware-${{ github.sha }}
-          if-no-files-found: error
-          path: |
-            build/src/*.out
-            build/src/*.zip
-            build/src/*.bin
-            build/src/*.hex
-            build/**/*.map
+          name: pinetime-mcuboot-app-dfu (Gadgetbridge-ready)
+          path: artifacts/dfu-app/**
+          compression-level: 0
+          retention-days: 14
+
+      - name: Upload DFU - Resources (Gadgetbridge-ready)
+        if: steps.prep.outputs.res == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: infinitime-resources (Gadgetbridge-ready)
+          path: artifacts/dfu-resources/**
+          compression-level: 0
+          retention-days: 14
+
+      - name: Upload DFU - Recovery Loader (optional)
+        if: steps.prep.outputs.rec == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pinetime-mcuboot-recovery-loader-dfu (Gadgetbridge-ready)
+          path: artifacts/dfu-recovery-loader/**
+          compression-level: 0
+          retention-days: 14
