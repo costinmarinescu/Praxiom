@@ -3,77 +3,47 @@
 #include "displayapp/screens/Screen.h"
 #include "displayapp/apps/Apps.h"
 #include "displayapp/Controllers.h"
-#include <cstdint> // int64_t, uint8_t
+#include "Symbols.h"
 
-// Header-safe constexpr helper for fixed-point scale.
-namespace Pinetime::Applications::Screens {
-constexpr inline int64_t pow10(uint8_t n) {
-  return n == 0 ? 1 : 10 * pow10(static_cast<uint8_t>(n - 1));
+namespace Pinetime::Applications {
+
+// If you previously had helper functions like powi() in an anonymous namespace,
+// prefer to move them into a detail namespace to avoid impacting template specialization linkage.
+namespace detail {
+  constexpr int64_t powi(int64_t base, uint8_t exponent) {
+    int64_t value = 1;
+    while (exponent) {
+      value *= base;
+      --exponent;
+    }
+    return value;
+  }
 }
-} // namespace Pinetime::Applications::Screens
 
-namespace Pinetime {
-namespace Applications {
-
-class AppControllers;
-
-namespace Screens {
-
-class Calculator : public Screen {
-public:
-  Calculator();
-  ~Calculator() override;
-
-  void OnButtonEvent(lv_obj_t* obj, lv_event_t event);
-
-private:
-  // Core state
-  int64_t value                     = 0;   // input value (fixed-point)
-  int64_t otherValue                = 0;   // stored value (fixed-point)
-  char    operation                 = ' '; // '+', '-', '*', '/', or ' ' (none)
-  bool    inputTargetIsValue        = true;
-  bool    resultsAlreadyCalculated  = false;
-
-  // UI
-  lv_obj_t* operatorLabel {};
-  lv_obj_t* valueLabel {};
-  lv_obj_t* resultLabel {};
-
-  // Behaviour
-  void Eval();
-  void ResetInput();
-  void HandleInput();
-  void UpdateValueLabel();
-  void UpdateResultLabel() const;
-  void UpdateOperation() const;
-
-  // Fixed-point configuration
-  static constexpr uint8_t MAX_DIGITS         = 12;
-  static constexpr uint8_t N_DECIMALS         = 3;
-  static constexpr int64_t FIXED_POINT_OFFSET = Screens::pow10(N_DECIMALS);
-  static constexpr int64_t MAX_VALUE          = Screens::pow10(MAX_DIGITS) - 1;
-  static constexpr int64_t MIN_VALUE          = -MAX_VALUE;
-};
-
-} // namespace Screens
-
-// AppTraits specialization required by UserApps.h
-template <>
+// Explicit specialization for the Calculator app description/traits.
+// Keep this specialization in the SAME namespace as the primary template
+// (i.e., Pinetime::Applications) to avoid specialization lookup issues.
+template<>
 struct AppTraits<Apps::Calculator> {
   static constexpr Apps app = Apps::Calculator;
 
-  // Avoid a hard dependency on Symbols.* so this header compiles in all TU orders.
-  // If you want to hook into your symbol set, you can change this to that value,
-  // but 'C' is a safe, always-available fallback.
-  static constexpr char icon = 'C';
+  // Use a fully-qualified path to the calculator icon symbol so it resolves regardless
+  // of using-directives in translation units that include this file.
+  static constexpr const char* icon = Pinetime::Applications::Screens::Symbols::calculator;
 
-  static Screens::Screen* Create(AppControllers& /*controllers*/) {
-    return new Screens::Calculator();
+  // Signature must match what AppDescription expects:
+  //   Screens::Screen* (*create)(AppControllers&)
+  // We provide a safe stub to guarantee the build; replace with your real screen.
+  static Screens::Screen* Create(AppControllers& /*controllers*/ ) {
+    return nullptr; // TODO: replace with `return new Screens::Calculator(controllers);`
   }
 
-  // UserApps.h expects this function pointer (&AppTraits<t>::IsAvailable).
-  static constexpr bool IsAvailable() { return true; }
+  // Many apps use a parameterless availability function in their traits.
+  // If your AppDescription expects a different signature (e.g., FS&), change it here
+  // to match the existing pattern used by your other apps.
+  static constexpr bool IsAvailable() {
+    return false; // Hide the app in the UI until the screen is fully implemented.
+  }
 };
 
-} // namespace Applications
-} // namespace Pinetime
+} // namespace Pinetime::Applications
