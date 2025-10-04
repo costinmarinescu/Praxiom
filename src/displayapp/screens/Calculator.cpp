@@ -1,350 +1,303 @@
-#include <cmath>
-#include <cstdlib>
-#include "Calculator.h"
+
+#include "displayapp/screens/Calculator.h"
 #include "displayapp/InfiniTimeTheme.h"
 #include "Symbols.h"
 
-using namespace Pinetime::Applications::Screens;
+#include <cstdio>
+#include <cstring>
+#include <cstdint>
+#include <algorithm>
 
-static void eventHandler(lv_obj_t* obj, lv_event_t event) {
-  auto app = static_cast<Calculator*>(obj->user_data);
-  app->OnButtonEvent(obj, event);
+/*
+ * This implementation is LVGL v7-friendly.
+ * If you ever move to LVGL v8+, consider replacing the btnm* calls
+ * with btnmatrix* equivalents (see notes in comments).
+ */
+
+using Pinetime::Applications::Screens::Calculator;
+
+// ====== Compile-time configuration ======
+static constexpr int64_t FP = 100000;        // fixed-point scale (5 decimal places)
+static constexpr int      FP_DECIMALS = 5;   // how many decimals we support
+static constexpr int64_t  MAX_FP = (INT64_MAX / 4); // conservative, to avoid overflow in ops
+
+// ====== Helpers (formatting) ======
+static void format_fixed_to_buf(char* out, size_t out_sz, int64_t v_fp) {
+  // Convert fixed-point to string without using floating point.
+  // Shows up to FP_DECIMALS decimals, trims trailing zeros.
+  bool neg = v_fp < 0;
+  uint64_t av = static_cast<uint64_t>(neg ? -v_fp : v_fp);
+
+  uint64_t int_part = av / FP;
+  uint64_t frac_part = av % FP;
+
+  // Build fractional string with leading zeros to FP_DECIMALS
+  char frac[16] = {0};
+  std::snprintf(frac, sizeof(frac), "%0*llu", FP_DECIMALS, (unsigned long long)frac_part);
+
+  // Trim trailing zeros
+  int frac_len = FP_DECIMALS;
+  while (frac_len > 0 && frac[frac_len - 1] == '0') frac[--frac_len] = '\0';
+
+  if (frac_len == 0) {
+    std::snprintf(out, out_sz, "%s%llu", neg ? "-" : "", (unsigned long long)int_part);
+  } else {
+    std::snprintf(out, out_sz, "%s%llu.%s", neg ? "-" : "", (unsigned long long)int_part, frac);
+  }
+}
+
+// ====== Button map (LVGL v7) ======
+// NOTE: In LVGL v7, the map must end with an empty string "" and rows are separated by "\n".
+static const char* btn_map[] = {
+  "AC", "C",  "⌫",  "÷",  "\n",
+  "7",  "8",  "9",  "×",  "\n",
+  "4",  "5",  "6",  "−",  "\n",
+  "1",  "2",  "3",  "+",  "\n",
+  "+/-","0",  ".",  "=",  "",
+};
+
+// ====== Event thunk (LVGL v7) ======
+static void btn_event_thunk(lv_obj_t* obj, lv_event_t e) {
+  if (e == LV_EVENT_VALUE_CHANGED) {
+    auto* self = static_cast<Calculator*>(lv_obj_get_user_data(obj));
+    if (self) self->OnButtonEvent(obj, e);
+  }
+}
+
+// ====== Lifecycle ======
+Calculator::Calculator() {
+  // Root is the current screen
+  auto* parent = lv_scr_act();
+
+  // Result (previous / running) value
+  resultLabel = lv_label_create(parent, nullptr);
+  lv_obj_set_width(resultLabel, LV_HOR_RES);
+  lv_label_set_align(resultLabel, LV_LABEL_ALIGN_RIGHT);
+  lv_label_set_text(resultLabel, "0");
+
+  // Current input value
+  valueLabel = lv_label_create(parent, nullptr);
+  lv_obj_set_width(valueLabel, LV_HOR_RES);
+  lv_label_set_align(valueLabel, LV_LABEL_ALIGN_RIGHT);
+  lv_label_set_text(valueLabel, "0");
+
+  // Position labels
+  lv_obj_align(resultLabel, nullptr, LV_ALIGN_IN_TOP_RIGHT, -8, 6);
+  lv_obj_align(valueLabel,  resultLabel, LV_ALIGN_OUT_BOTTOM_RIGHT, 0, 6);
+
+  // Button matrix
+  buttonMatrix = lv_btnm_create(parent, nullptr);
+  lv_btnm_set_map(buttonMatrix, btn_map);
+  lv_obj_set_width(buttonMatrix, LV_HOR_RES - 8);
+  lv_obj_set_height(buttonMatrix, LV_VER_RES - 100);
+  lv_obj_align(buttonMatrix, nullptr, LV_ALIGN_IN_BOTTOM_MID, 0, -6);
+
+  // Hook events
+  lv_obj_set_user_data(buttonMatrix, this);
+  lv_obj_set_event_cb(buttonMatrix, btn_event_thunk);
+
+  // Engine state
+  ResetAll();
+  UpdateResultLabel();
+  UpdateValueLabel();
 }
 
 Calculator::~Calculator() {
-  lv_obj_clean(lv_scr_act());
+  // Nothing special (labels and btnm belong to screen and will be cleaned by LVGL).
 }
 
-static const char* buttonMap[] = {
-  "7", "8", "9", Symbols::backspace, "\n",
-  "4", "5", "6", "+ -", "\n",
-  "1", "2", "3", "* /", "\n",
-  "0", ".", "(-)", "=", ""
-};
+// ====== Public LVGL event ======
+void Calculator::OnButtonEvent(lv_obj_t* obj, lv_event_t) {
+  // Which button?
+  uint16_t id = lv_btnm_get_active_btn(obj);
+  const char* txt = lv_btnm_get_btn_text(obj, id);
+  if (!txt || !*txt) return;
 
-Calculator::Calculator() {
-  resultLabel = lv_label_create(lv_scr_act(), nullptr);
-  lv_label_set_long_mode(resultLabel, LV_LABEL_LONG_CROP);
-  lv_label_set_align(resultLabel, LV_LABEL_ALIGN_RIGHT);
-  lv_label_set_text_fmt(resultLabel, "%lld", static_cast<long long>(result));
-  lv_obj_set_size(resultLabel, 200, 20);
-  lv_obj_set_pos(resultLabel, 10, 5);
-
-  valueLabel = lv_label_create(lv_scr_act(), nullptr);
-  lv_label_set_long_mode(valueLabel, LV_LABEL_LONG_CROP);
-  lv_label_set_align(valueLabel, LV_LABEL_ALIGN_RIGHT);
-  lv_label_set_text_fmt(valueLabel, "%lld", static_cast<long long>(value));
-  lv_obj_set_size(valueLabel, 200, 20);
-  lv_obj_set_pos(valueLabel, 10, 35);
-
-  buttonMatrix = lv_btnmatrix_create(lv_scr_act(), nullptr);
-  buttonMatrix->user_data = this;
-  lv_obj_set_event_cb(buttonMatrix, eventHandler);
-  lv_btnmatrix_set_map(buttonMatrix, buttonMap);
-  lv_btnmatrix_set_one_check(buttonMatrix, true);
-  lv_obj_set_size(buttonMatrix, 238, 180);
-  lv_obj_set_style_local_bg_color(buttonMatrix, LV_BTNMATRIX_PART_BTN, LV_STATE_DEFAULT, Colors::bgAlt);
-  lv_obj_set_style_local_pad_inner(buttonMatrix, LV_BTNMATRIX_PART_BG, LV_STATE_DEFAULT, 1);
-  lv_obj_set_style_local_pad_top(buttonMatrix, LV_BTNMATRIX_PART_BG, LV_STATE_DEFAULT, 1);
-  lv_obj_set_style_local_pad_bottom(buttonMatrix, LV_BTNMATRIX_PART_BG, LV_STATE_DEFAULT, 1);
-  lv_obj_set_style_local_pad_left(buttonMatrix, LV_BTNMATRIX_PART_BG, LV_STATE_DEFAULT, 1);
-  lv_obj_set_style_local_pad_right(buttonMatrix, LV_BTNMATRIX_PART_BG, LV_STATE_DEFAULT, 1);
-  lv_obj_align(buttonMatrix, nullptr, LV_ALIGN_IN_BOTTOM_MID, 0, 0);
-
-  lv_obj_set_style_local_bg_opa(buttonMatrix, LV_BTNMATRIX_PART_BTN, LV_STATE_CHECKED, LV_OPA_COVER);
-  lv_obj_set_style_local_bg_grad_stop(buttonMatrix, LV_BTNMATRIX_PART_BTN, LV_STATE_CHECKED, 128);
-  lv_obj_set_style_local_bg_main_stop(buttonMatrix, LV_BTNMATRIX_PART_BTN, LV_STATE_CHECKED, 128);
+  HandleKey(txt);
 }
 
-void Calculator::OnButtonEvent(lv_obj_t* obj, lv_event_t event) {
-  if ((obj == buttonMatrix) && (event == LV_EVENT_PRESSED)) {
-    HandleInput();
-  }
-}
-
-void Calculator::HandleInput() {
-  const char* buttonText = lv_btnmatrix_get_active_btn_text(buttonMatrix);
-  if (buttonText == nullptr) return;
-
-  if ((equalSignPressedBefore && (*buttonText != '=')) || (error != Error::None)) {
-    ResetInput();
-    UpdateOperation();
-  }
-
-  switch (*buttonText) {
-    case '0': case '1': case '2': case '3': case '4':
-    case '5': case '6': case '7': case '8': case '9': {
-      uint8_t digit = static_cast<uint8_t>(*buttonText - '0');
-      int8_t sign = (value < 0) ? -1 : 1;
-
-      if (offset < FIXED_POINT_OFFSET) {
-        value += static_cast<int64_t>(sign) * offset * digit;
-        offset /= 10;
-      } else if (value <= MAX_VALUE / 10) {
-        value *= 10;
-        value += static_cast<int64_t>(sign) * offset * digit;
-      }
-    } break;
-
-    // unary minus
-    case '(':
-      value = -value;
-      break;
-
-    case '.':
-      if (offset == FIXED_POINT_OFFSET) {
-        offset /= 10;
-      }
-      break;
-
-    // operators: pressing + cycles + -> - -> clear
-    case '+':
-      if (value != 0) {
-        Eval();
-        ResetInput();
-      }
-      switch (operation) {
-        case '+': operation = '-'; break;
-        case '-': operation = ' '; break;
-        default:  operation = '+'; break;
-      }
-      UpdateOperation();
-      break;
-
-    // operators: pressing * cycles * -> / -> clear
-    case '*':
-      if (value != 0) {
-        Eval();
-        ResetInput();
-      }
-      switch (operation) {
-        case '*': operation = '/'; break;
-        case '/': operation = ' '; break;
-        default:  operation = '*'; break;
-      }
-      UpdateOperation();
-      break;
-
-    // backspace (match only the first byte of the symbol)
-    case Symbols::backspace[0]:
-      if (value != 0) {
-        if (offset < FIXED_POINT_OFFSET) {
-          if (offset == 0) {
-            offset = 1;
-          } else {
-            offset *= 10;
-          }
-        } else {
-          value /= 10;
-        }
-        if (offset < FIXED_POINT_OFFSET) {
-          value -= value % (10 * offset);
-        } else {
-          value -= value % offset;
-        }
-      } else if (offset < FIXED_POINT_OFFSET) {
-        if (offset == 0) {
-          offset = 1;
-        } else {
-          offset *= 10;
-        }
-      } else {
-        // reset the result
-        result = 0;
-      }
-
-      if (value == 0) {
-        operation = ' ';
-        UpdateOperation();
-      }
-      break;
-
-    case '=':
-      equalSignPressedBefore = true;
-      Eval();
-      if (operation == ' ') {
-        ResetInput();
-      }
-      break;
-
-    default:
-      break;
-  }
-
-  UpdateValueLabel();
-  UpdateResultLabel();
-}
-
-void Calculator::UpdateOperation() const {
-  switch (operation) {
-    case '+':
-      lv_obj_set_style_local_bg_grad_dir(buttonMatrix, LV_BTNMATRIX_PART_BTN, LV_STATE_CHECKED, LV_GRAD_DIR_HOR);
-      lv_obj_set_style_local_bg_color(buttonMatrix, LV_BTNMATRIX_PART_BTN, LV_STATE_CHECKED, Colors::deepOrange);
-      lv_obj_set_style_local_bg_grad_color(buttonMatrix, LV_BTNMATRIX_PART_BTN, LV_STATE_CHECKED, Colors::bgAlt);
-      lv_btnmatrix_set_btn_ctrl(buttonMatrix, 7, LV_BTNMATRIX_CTRL_CHECK_STATE);
-      break;
-    case '-':
-      lv_obj_set_style_local_bg_grad_dir(buttonMatrix, LV_BTNMATRIX_PART_BTN, LV_STATE_CHECKED, LV_GRAD_DIR_HOR);
-      lv_obj_set_style_local_bg_color(buttonMatrix, LV_BTNMATRIX_PART_BTN, LV_STATE_CHECKED, Colors::bgAlt);
-      lv_obj_set_style_local_bg_grad_color(buttonMatrix, LV_BTNMATRIX_PART_BTN, LV_STATE_CHECKED, Colors::deepOrange);
-      lv_btnmatrix_set_btn_ctrl(buttonMatrix, 7, LV_BTNMATRIX_CTRL_CHECK_STATE);
-      break;
-    case '*':
-      lv_obj_set_style_local_bg_grad_dir(buttonMatrix, LV_BTNMATRIX_PART_BTN, LV_STATE_CHECKED, LV_GRAD_DIR_HOR);
-      lv_obj_set_style_local_bg_color(buttonMatrix, LV_BTNMATRIX_PART_BTN, LV_STATE_CHECKED, Colors::deepOrange);
-      lv_obj_set_style_local_bg_grad_color(buttonMatrix, LV_BTNMATRIX_PART_BTN, LV_STATE_CHECKED, Colors::bgAlt);
-      lv_btnmatrix_set_btn_ctrl(buttonMatrix, 11, LV_BTNMATRIX_CTRL_CHECK_STATE);
-      break;
-    case '/':
-      lv_obj_set_style_local_bg_grad_dir(buttonMatrix, LV_BTNMATRIX_PART_BTN, LV_STATE_CHECKED, LV_GRAD_DIR_HOR);
-      lv_obj_set_style_local_bg_color(buttonMatrix, LV_BTNMATRIX_PART_BTN, LV_STATE_CHECKED, Colors::bgAlt);
-      lv_obj_set_style_local_bg_grad_color(buttonMatrix, LV_BTNMATRIX_PART_BTN, LV_STATE_CHECKED, Colors::deepOrange);
-      lv_btnmatrix_set_btn_ctrl(buttonMatrix, 11, LV_BTNMATRIX_CTRL_CHECK_STATE);
-      break;
-    default:
-      lv_btnmatrix_clear_btn_ctrl_all(buttonMatrix, LV_BTNMATRIX_CTRL_CHECK_STATE);
-      break;
-  }
+// ====== Internal helpers ======
+void Calculator::ResetAll() {
+  value = 0;
+  result = 0;
+  pendingOp = 0;
+  hasDecimal = false;
+  decimalsEntered = 0;
+  error = Error::None;
 }
 
 void Calculator::ResetInput() {
   value = 0;
-  offset = FIXED_POINT_OFFSET;
-  operation = ' ';
-  equalSignPressedBefore = false;
-  error = Error::None;
+  hasDecimal = false;
+  decimalsEntered = 0;
 }
 
-void Calculator::UpdateResultLabel() const {
-  int64_t integer = result / FIXED_POINT_OFFSET;
-  int64_t remainder = result % FIXED_POINT_OFFSET;
-  bool negative = (remainder < 0);
+static inline bool is_digit(const char* s) {
+  return s && s[1] == '\0' && s[0] >= '0' && s[0] <= '9';
+}
 
-  if (remainder == 0) {
-    lv_label_set_text_fmt(resultLabel, "%lld", static_cast<long long>(integer));
+void Calculator::HandleKey(const char* key) {
+  if (error != Error::None) {
+    // Any key except AC resets from error
+    if (std::strcmp(key, "AC") != 0) {
+      ResetAll();
+      UpdateResultLabel();
+      UpdateValueLabel();
+    }
+  }
+
+  if (std::strcmp(key, "AC") == 0) {
+    ResetAll();
+  } else if (std::strcmp(key, "C") == 0) {
+    ResetInput();
+  } else if (std::strcmp(key, "⌫") == 0) {
+    Backspace();
+  } else if (std::strcmp(key, "+/-") == 0) {
+    if (value != 0) value = -value;
+  } else if (std::strcmp(key, ".") == 0) {
+    hasDecimal = true;
+  } else if (std::strcmp(key, "+") == 0 ||
+             std::strcmp(key, "−") == 0 ||
+             std::strcmp(key, "×") == 0 ||
+             std::strcmp(key, "÷") == 0) {
+    ApplyPending();              // result (op) value
+    pendingOp = key[0];          // store new op (+, −, ×, ÷ first byte)
+    ResetInput();
+  } else if (std::strcmp(key, "=") == 0) {
+    ApplyPending();
+    pendingOp = 0;
+  } else if (is_digit(key)) {
+    AppendDigit(key[0] - '0');
+  } else {
+    // ignore unknown keys
+  }
+
+  UpdateResultLabel();
+  UpdateValueLabel();
+}
+
+void Calculator::Backspace() {
+  if (!hasDecimal) {
+    value /= 10; // drop last integer digit
+  } else {
+    if (decimalsEntered > 0) {
+      // remove one decimal digit
+      // e.g. 12.34 -> 12.3 -> 12.
+      // representation: value is fixed-point scaled by FP
+      // So just "un-append" last decimal digit:
+      // last decimal digit was appended as d * (FP / 10^{k})
+      // Equivalent here: multiply by 10 and divide by 10 removing residual
+      // Simpler: convert to string and strip? But keep it pure integer math:
+      // We'll track by recomputing: multiply by 10 then truncate.
+      // Actually easiest (and safe): zero-out one least significant decimal place.
+      int64_t sign = value < 0 ? -1 : 1;
+      int64_t av = std::llabs(value);
+      av = (av / 10); // drop one decimal place in fixed-point domain
+      value = sign * av;
+      decimalsEntered--;
+      if (decimalsEntered == 0) hasDecimal = false;
+    }
+  }
+}
+
+void Calculator::AppendDigit(uint8_t d) {
+  if (!hasDecimal) {
+    // value = value * 10 + d, guarding overflow
+    if (std::llabs(value) > (MAX_FP - d) / 10) {
+      error = Error::TooLarge;
+      return;
+    }
+    value = value * 10 + (value >= 0 ? d : -d);
+  } else {
+    if (decimalsEntered >= FP_DECIMALS) return; // ignore extra decimals
+    // append fractional digit: value += sign * (FP / 10^{k+1}) * d
+    int64_t unit = FP;
+    for (int i = 0; i <= decimalsEntered; ++i) unit /= 10;
+    if (unit == 0) return;
+    int64_t delta = static_cast<int64_t>(d) * unit;
+    if (value < 0) delta = -delta;
+    if ((value > 0 && value > MAX_FP - delta) || (value < 0 && value < -MAX_FP - delta)) {
+      error = Error::TooLarge;
+      return;
+    }
+    value += delta;
+    decimalsEntered++;
+  }
+}
+
+static bool will_mul_overflow(int64_t a, int64_t b) {
+  if (a == 0 || b == 0) return false;
+  if (a == -1) return b == INT64_MIN;
+  if (b == -1) return a == INT64_MIN;
+  __int128 t = static_cast<__int128>(a) * static_cast<__int128>(b);
+  return t > INT64_MAX || t < INT64_MIN;
+}
+
+void Calculator::ApplyPending() {
+  if (error != Error::None) return;
+
+  // If there is no pending op, move value to result
+  if (pendingOp == 0) {
+    result = value;
     return;
   }
 
-  if (remainder < 0) {
-    remainder = -remainder;
-  }
+  // Compute "result (op) value"
+  int64_t a = result;
+  int64_t b = value;
 
-  uint8_t minWidth = N_DECIMALS;
-
-  // trim trailing zeros
-  while ((remainder > 0) && (remainder % 10 == 0)) {
-    remainder /= 10;
-    minWidth--;
-  }
-
-  if ((integer == 0) && negative) {
-    lv_label_set_text_fmt(resultLabel, "-0.%0*lld",
-                          static_cast<int>(minWidth),
-                          static_cast<long long>(remainder));
-  } else {
-    lv_label_set_text_fmt(resultLabel, "%lld.%0*lld",
-                          static_cast<long long>(integer),
-                          static_cast<int>(minWidth),
-                          static_cast<long long>(remainder));
-  }
-}
-
-void Calculator::UpdateValueLabel() {
-  switch (error) {
-    case Error::TooLarge:
-      lv_label_set_text_static(valueLabel, "too large");
-      break;
-    case Error::ZeroDivision:
-      lv_label_set_text_static(valueLabel, "zero division");
-      break;
-    case Error::None:
-    default: {
-      int64_t integer = value / FIXED_POINT_OFFSET;
-      int64_t remainder = value % FIXED_POINT_OFFSET;
-      bool negative = (remainder < 0);
-      int64_t printRemainder = (remainder < 0) ? -remainder : remainder;
-
-      uint8_t minWidth = 0;
-      int64_t tmpOffset = offset;
-
-      if (tmpOffset == 0) {
-        tmpOffset = 1;
-        minWidth = 1;
-      }
-      while (tmpOffset < FIXED_POINT_OFFSET) {
-        tmpOffset *= 10;
-        minWidth++;
-      }
-      minWidth--;
-
-      for (uint8_t i = minWidth; i < N_DECIMALS; i++) {
-        printRemainder /= 10;
-      }
-
-      if ((integer == 0) && negative) {
-        lv_label_set_text_fmt(valueLabel, "-0.%0*lld",
-                              static_cast<int>(minWidth),
-                              static_cast<long long>(printRemainder));
-      } else if (offset == FIXED_POINT_OFFSET) {
-        lv_label_set_text_fmt(valueLabel, "%lld", static_cast<long long>(integer));
-      } else if ((offset == (FIXED_POINT_OFFSET / 10)) && (remainder == 0)) {
-        lv_label_set_text_fmt(valueLabel, "%lld.",
-                              static_cast<long long>(integer));
-      } else {
-        lv_label_set_text_fmt(valueLabel, "%lld.%0*lld",
-                              static_cast<long long>(integer),
-                              static_cast<int>(minWidth),
-                              static_cast<long long>(printRemainder));
-      }
-    } break;
-  }
-}
-
-void Calculator::Eval() {
-  switch (operation) {
-    case ' ':
-      result = value;
-      break;
-
+  switch (pendingOp) {
     case '+':
-      if (((result > 0) && (value > (MAX_VALUE - result))) ||
-          ((result < 0) && (value < (MIN_VALUE - result)))) {
+      if ((b > 0 && a > INT64_MAX - b) || (b < 0 && a < INT64_MIN - b)) {
         error = Error::TooLarge;
-        break;
+        return;
       }
-      result += value;
+      result = a + b;
       break;
-
+    case '−': // U+2212 minus sign
     case '-':
-      if (((result < 0) && (value > (MAX_VALUE + result))) ||
-          ((result > 0) && (value < (MIN_VALUE + result)))) {
+      if ((b < 0 && a > INT64_MAX + b) || (b > 0 && a < INT64_MIN + b)) {
         error = Error::TooLarge;
-        break;
+        return;
       }
-      result -= value;
+      result = a - b;
       break;
-
-    case '*': {
-      if ((result != 0) &&
-          (llabs(static_cast<long long>(value)) >
-           (FIXED_POINT_OFFSET * (MAX_VALUE / llabs(static_cast<long long>(result)))))) {
-        error = Error::TooLarge;
-        break;
-      }
-      result *= value;
-      result /= FIXED_POINT_OFFSET;
-    } break;
-
+    case '×': // U+00D7 multiplication sign
+    case '*':
+      // (a * b) / FP
+      if (will_mul_overflow(a, b)) { error = Error::TooLarge; return; }
+      result = static_cast<int64_t>((static_cast<__int128>(a) * static_cast<__int128>(b)) / FP);
+      break;
+    case '÷': // U+00F7 division sign
     case '/':
-      if (value == 0) {
-        error = Error::ZeroDivision;
-        break;
-      }
-      result *= FIXED_POINT_OFFSET;
-      result /= value;
+      if (b == 0) { error = Error::ZeroDivision; return; }
+      // (a * FP) / b
+      if (will_mul_overflow(a, FP)) { error = Error::TooLarge; return; }
+      result = static_cast<int64_t>((static_cast<__int128>(a) * FP) / b);
       break;
-
     default:
       break;
   }
+}
+
+void Calculator::UpdateResultLabel() const {
+  char buf[48];
+  if (error == Error::ZeroDivision) {
+    std::snprintf(buf, sizeof(buf), "Error: ÷0");
+  } else if (error == Error::TooLarge) {
+    std::snprintf(buf, sizeof(buf), "Error: overflow");
+  } else {
+    format_fixed_to_buf(buf, sizeof(buf), result);
+  }
+  lv_label_set_text(resultLabel, buf);
+}
+
+void Calculator::UpdateValueLabel() {
+  char buf[48];
+  if (error != Error::None) {
+    lv_label_set_text(valueLabel, "");
+    return;
+  }
+  format_fixed_to_buf(buf, sizeof(buf), value);
+  lv_label_set_text(valueLabel, buf);
 }
