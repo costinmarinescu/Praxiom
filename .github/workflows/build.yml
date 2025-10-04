@@ -4,16 +4,29 @@ on: [push]
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
+      # Fast: install toolchain & build deps from apt
       - name: Install ARM toolchain & build deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi libnewlib-arm-none-eabi \
-                                  ninja-build cmake unzip curl
+          sudo apt-get install -y \
+            gcc-arm-none-eabi binutils-arm-none-eabi libnewlib-arm-none-eabi \
+            ninja-build cmake unzip curl
 
-      - name: Fetch Nordic nRF5 SDK 17.0.2
+      # Cache the nRF5 SDK so we don't download every run
+      - name: Cache nRF5 SDK
+        id: cache-nrf5
+        uses: actions/cache@v4
+        with:
+          path: $HOME/sdk/nrf5
+          key: nrf5sdk-17.0.2
+
+      # Download only if cache missed
+      - name: Fetch Nordic nRF5 SDK 17.0.2 (if needed)
+        if: steps.cache-nrf5.outputs.cache-hit != 'true'
         run: |
           mkdir -p $HOME/sdk
           cd $HOME/sdk
@@ -22,14 +35,15 @@ jobs:
           rm -f nrf5.zip
           mv nRF5_SDK_17.0.2_d674dde nrf5
 
+      # Inject our CMake include once (safe if already present)
       - name: Ensure Praxiom CMake include (idempotent)
         run: |
-          # Add the include only if it's not already present
           if ! grep -q 'firmware/CMakeLists.additions.txt' CMakeLists.txt; then
             echo 'include(${CMAKE_SOURCE_DIR}/firmware/CMakeLists.additions.txt OPTIONAL)' >> CMakeLists.txt
           fi
 
-      - name: Configure (Release + DFU + Praxiom flags)
+      # Configure and build (Release + DFU) with Praxiom flags
+      - name: Configure
         run: |
           cmake -B build -S . -G "Ninja" \
             -DCMAKE_BUILD_TYPE=Release \
