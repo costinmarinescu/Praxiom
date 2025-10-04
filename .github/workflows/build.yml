@@ -8,7 +8,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Fast: install toolchain & build deps from apt
+      # Toolchain & build deps
       - name: Install ARM toolchain & build deps
         run: |
           sudo apt-get update
@@ -16,7 +16,19 @@ jobs:
             gcc-arm-none-eabi binutils-arm-none-eabi libnewlib-arm-none-eabi \
             ninja-build cmake unzip curl
 
-      # Cache the nRF5 SDK so we don't download every run
+      # Node.js (for lv_font_conv)
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install lv_font_conv
+        run: |
+          sudo npm i -g lv_font_conv
+          which lv_font_conv
+          lv_font_conv --version
+
+      # Cache the Nordic SDK to speed up builds
       - name: Cache nRF5 SDK
         id: cache-nrf5
         uses: actions/cache@v4
@@ -35,14 +47,14 @@ jobs:
           rm -f nrf5.zip
           mv nRF5_SDK_17.0.2_d674dde nrf5
 
-      # Inject our CMake include once (safe if already present)
+      # Ensure Praxiom include once (safe if already present)
       - name: Ensure Praxiom CMake include (idempotent)
         run: |
           if ! grep -q 'firmware/CMakeLists.additions.txt' CMakeLists.txt; then
             echo 'include(${CMAKE_SOURCE_DIR}/firmware/CMakeLists.additions.txt OPTIONAL)' >> CMakeLists.txt
           fi
 
-      # Configure and build (Release + DFU) with Praxiom flags
+      # Configure (Release + DFU) with Praxiom flags
       - name: Configure
         run: |
           cmake -B build -S . -G "Ninja" \
