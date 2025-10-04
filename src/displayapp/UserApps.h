@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 #include "displayapp/apps/Apps.h"
 #include "Controllers.h"
 
@@ -15,6 +16,9 @@
 #include "displayapp/screens/WatchFacePineTimeStyle.h"
 #include "displayapp/screens/WatchFaceTerminal.h"
 #include "displayapp/screens/WatchFacePrideFlag.h"
+
+// Ensure the Calculator AppTraits specialization is visible at instantiation time.
+#include "displayapp/screens/CalculatorTraits.h"
 
 namespace Pinetime {
   namespace Applications {
