@@ -1,5 +1,6 @@
 #include <cmath>
 #include <cinttypes>
+#include <cstdlib>
 #include "Calculator.h"
 #include "displayapp/InfiniTimeTheme.h"
 #include "Symbols.h"
@@ -325,15 +326,15 @@ void Calculator::Eval() {
       result -= value;
       break;
 
-    case '*':
+    case '*': {
       if ((result != 0) &&
-          (std::abs(value) > (FIXED_POINT_OFFSET * (MAX_VALUE / std::abs(result))))) {
+          (llabs(value) > (FIXED_POINT_OFFSET * (MAX_VALUE / llabs(result))))) {
         error = Error::TooLarge;
         break;
       }
       result *= value;
       result /= FIXED_POINT_OFFSET;
-      break;
+    } break;
 
     case '/':
       if (value == 0) {
