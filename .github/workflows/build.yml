@@ -35,10 +35,21 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            cmake ninja-build \
+            cmake ninja-build unzip curl \
             gcc-arm-none-eabi binutils-arm-none-eabi \
-            libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib \
-            unzip curl
+            libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib
+
+      - name: Setup Node (for lv_font_conv)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install lv_font_conv
+        id: lvfc
+        run: |
+          npm i -g lv_font_conv
+          which lv_font_conv
+          echo "path=$(which lv_font_conv)" >> "$GITHUB_OUTPUT"
 
       - name: Cache nRF5 SDK
         id: nrf5_cache
@@ -72,7 +83,8 @@ jobs:
         run: |
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DARM_NONE_EABI_TOOLCHAIN_PATH='${{ steps.detect.outputs.toolchain_root }}' \
-            -DNRF5_SDK_PATH='${{ env.NRF5_SDK_PATH }}'
+            -DNRF5_SDK_PATH='${{ env.NRF5_SDK_PATH }}' \
+            -DLV_FONT_CONV='${{ steps.lvfc.outputs.path }}'
 
       - name: Build
         run: cmake --build build -j"$(nproc)"
