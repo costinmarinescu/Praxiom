@@ -15,7 +15,7 @@ Calculator::~Calculator() {
   lv_obj_clean(lv_scr_act());
 }
 
-static const char* const buttonMap[] = {
+static const char* buttonMap[] = {
   "7", "8", "9", Symbols::backspace, "\n",
   "4", "5", "6", "+ -", "\n",
   "1", "2", "3", "* /", "\n",
