@@ -112,3 +112,274 @@ void Calculator::HandleInput() {
       break;
 
     // for every operator we:
+    // - eval the current operator if value > FIXED_POINT_OFFSET
+    // - then set the new operator
+    // - + and - as well as * and / cycle on the same button
+    case '+':
+      if (value != 0) {
+        Eval();
+        ResetInput();
+      }
+
+      switch (operation) {
+        case '+':
+          operation = '-';
+          break;
+        case '-':
+          operation = ' ';
+          break;
+        default:
+          operation = '+';
+          break;
+      }
+      UpdateOperation();
+      break;
+
+    case '*':
+      if (value != 0) {
+        Eval();
+        ResetInput();
+      }
+
+      switch (operation) {
+        case '*':
+          operation = '/';
+          break;
+        case '/':
+          operation = ' ';
+          break;
+        default:
+          operation = '*';
+          break;
+      }
+      UpdateOperation();
+      break;
+
+    // this is a little hacky because it matches only the first char
+    case Symbols::backspace[0]:
+      if (value != 0) {
+        // delete one value digit
+        if (offset < FIXED_POINT_OFFSET) {
+          if (offset == 0) {
+            offset = 1;
+          } else {
+            offset *= 10;
+          }
+        } else {
+          value /= 10;
+        }
+        if (offset < FIXED_POINT_OFFSET) {
+          value -= value % (10 * offset);
+        } else {
+          value -= value % offset;
+        }
+      } else if (offset < FIXED_POINT_OFFSET) {
+        if (offset == 0) {
+          offset = 1;
+        } else {
+          offset *= 10;
+        }
+      } else {
+        // reset the result
+        result = 0;
+      }
+
+      if (value == 0) {
+        operation = ' ';
+        UpdateOperation();
+      }
+      break;
+
+    case '=':
+      equalSignPressedBefore = true;
+      Eval();
+      // If the operation is ' ' then we move the value to the result.
+      // We reset the input after this.
+      // This seems more convenient.
+      if (operation == ' ') {
+        ResetInput();
+      }
+      break;
+  }
+
+  UpdateValueLabel();
+  UpdateResultLabel();
+}
+
+void Calculator::UpdateOperation() const {
+  switch (operation) {
+    case '+':
+      lv_obj_set_style_local_bg_grad_dir(buttonMatrix, LV_BTNMATRIX_PART_BTN, LV_STATE_CHECKED, LV_GRAD_DIR_HOR);
+      lv_obj_set_style_local_bg_color(buttonMatrix, LV_BTNMATRIX_PART_BTN, LV_STATE_CHECKED, Colors::deepOrange);
+      lv_obj_set_style_local_bg_grad_color(buttonMatrix, LV_BTNMATRIX_PART_BTN, LV_STATE_CHECKED, Colors::bgAlt);
+      lv_btnmatrix_set_btn_ctrl(buttonMatrix, 7, LV_BTNMATRIX_CTRL_CHECK_STATE);
+      break;
+    case '-':
+      lv_obj_set_style_local_bg_grad_dir(buttonMatrix, LV_BTNMATRIX_PART_BTN, LV_STATE_CHECKED, LV_GRAD_DIR_HOR);
+      lv_obj_set_style_local_bg_color(buttonMatrix, LV_BTNMATRIX_PART_BTN, LV_STATE_CHECKED, Colors::bgAlt);
+      lv_obj_set_style_local_bg_grad_color(buttonMatrix, LV_BTNMATRIX_PART_BTN, LV_STATE_CHECKED, Colors::deepOrange);
+      lv_btnmatrix_set_btn_ctrl(buttonMatrix, 7, LV_BTNMATRIX_CTRL_CHECK_STATE);
+      break;
+    case '*':
+      lv_obj_set_style_local_bg_grad_dir(buttonMatrix, LV_BTNMATRIX_PART_BTN, LV_STATE_CHECKED, LV_GRAD_DIR_HOR);
+      lv_obj_set_style_local_bg_color(buttonMatrix, LV_BTNMATRIX_PART_BTN, LV_STATE_CHECKED, Colors::deepOrange);
+      lv_obj_set_style_local_bg_grad_color(buttonMatrix, LV_BTNMATRIX_PART_BTN, LV_STATE_CHECKED, Colors::bgAlt);
+      lv_btnmatrix_set_btn_ctrl(buttonMatrix, 11, LV_BTNMATRIX_CTRL_CHECK_STATE);
+      break;
+    case '/':
+      lv_obj_set_style_local_bg_grad_dir(buttonMatrix, LV_BTNMATRIX_PART_BTN, LV_STATE_CHECKED, LV_GRAD_DIR_HOR);
+      lv_obj_set_style_local_bg_color(buttonMatrix, LV_BTNMATRIX_PART_BTN, LV_STATE_CHECKED, Colors::bgAlt);
+      lv_obj_set_style_local_bg_grad_color(buttonMatrix, LV_BTNMATRIX_PART_BTN, LV_STATE_CHECKED, Colors::deepOrange);
+      lv_btnmatrix_set_btn_ctrl(buttonMatrix, 11, LV_BTNMATRIX_CTRL_CHECK_STATE);
+      break;
+    default:
+      lv_btnmatrix_clear_btn_ctrl_all(buttonMatrix, LV_BTNMATRIX_CTRL_CHECK_STATE);
+      break;
+  }
+}
+
+void Calculator::ResetInput() {
+  value = 0;
+  offset = FIXED_POINT_OFFSET;
+  operation = ' ';
+  equalSignPressedBefore = false;
+  error = Error::None;
+}
+
+void Calculator::UpdateResultLabel() const {
+  int64_t integer = result / FIXED_POINT_OFFSET;
+  int64_t remainder = result % FIXED_POINT_OFFSET;
+  bool negative = (remainder < 0);
+
+  if (remainder == 0) {
+    lv_label_set_text_fmt(resultLabel, "%lld", static_cast<long long>(integer));
+    return;
+  }
+
+  if (remainder < 0) {
+    remainder = -remainder;
+  }
+
+  uint8_t minWidth = N_DECIMALS;
+
+  // cut "0"-digits on the right
+  while ((remainder > 0) && (remainder % 10 == 0)) {
+    remainder /= 10;
+    minWidth--;
+  }
+
+  if ((integer == 0) && negative) {
+    lv_label_set_text_fmt(resultLabel, "-0.%0*lld", minWidth, static_cast<long long>(remainder));
+  } else {
+    lv_label_set_text_fmt(resultLabel, "%lld.%0*lld",
+                          static_cast<long long>(integer),
+                          minWidth,
+                          static_cast<long long>(remainder));
+  }
+}
+
+void Calculator::UpdateValueLabel() {
+  switch (error) {
+    case Error::TooLarge:
+      lv_label_set_text_static(valueLabel, "too large");
+      break;
+    case Error::ZeroDivision:
+      lv_label_set_text_static(valueLabel, "zero division");
+      break;
+    case Error::None:
+    default: {
+      int64_t integer = value / FIXED_POINT_OFFSET;
+      int64_t remainder = value % FIXED_POINT_OFFSET;
+      bool negative = (remainder < 0);
+
+      int64_t printRemainder = (remainder < 0) ? -remainder : remainder;
+
+      uint8_t minWidth = 0;
+      int64_t tmpOffset = offset;
+
+      if (tmpOffset == 0) {
+        tmpOffset = 1;
+        minWidth = 1;
+      }
+      while (tmpOffset < FIXED_POINT_OFFSET) {
+        tmpOffset *= 10;
+        minWidth++;
+      }
+      minWidth--;
+
+      for (uint8_t i = minWidth; i < N_DECIMALS; i++) {
+        printRemainder /= 10;
+      }
+
+      if ((integer == 0) && negative) {
+        lv_label_set_text_fmt(valueLabel, "-0.%0*lld", minWidth, static_cast<long long>(printRemainder));
+      } else if (offset == FIXED_POINT_OFFSET) {
+        lv_label_set_text_fmt(valueLabel, "%lld", static_cast<long long>(integer));
+      } else if ((offset == (FIXED_POINT_OFFSET / 10)) && (remainder == 0)) {
+        lv_label_set_text_fmt(valueLabel, "%lld.", static_cast<long long>(integer));
+      } else {
+        lv_label_set_text_fmt(valueLabel, "%lld.%0*lld",
+                              static_cast<long long>(integer),
+                              minWidth,
+                              static_cast<long long>(printRemainder));
+      }
+    } break;
+  }
+}
+
+// update the result based on value and operation
+void Calculator::Eval() {
+  switch (operation) {
+    case ' ':
+      result = value;
+      break;
+
+    case '+':
+      // check for overflow
+      if (((result > 0) && (value > (MAX_VALUE - result))) || ((result < 0) && (value < (MIN_VALUE - result)))) {
+        error = Error::TooLarge;
+        break;
+      }
+
+      result += value;
+      break;
+    case '-':
+      // check for overflow
+      if (((result < 0) && (value > (MAX_VALUE + result))) || ((result > 0) && (value < (MIN_VALUE + result)))) {
+        error = Error::TooLarge;
+        break;
+      }
+
+      result -= value;
+      break;
+    case '*':
+      // check for overflow
+      // while dividing we eliminate the fixed point offset
+      // therefore we have to multiply it again for the comparison with value
+      // we also assume here that MAX_VALUE == -MIN_VALUE
+      if ((result != 0) && (std::abs(value) > (FIXED_POINT_OFFSET * (MAX_VALUE / std::abs(result))))) {
+        error = Error::TooLarge;
+        break;
+      }
+
+      result *= value;
+      // fixed point offset was multiplied too
+      result /= FIXED_POINT_OFFSET;
+      break;
+    case '/':
+      // check for zero division
+      if (value == 0) {
+        error = Error::ZeroDivision;
+        break;
+      }
+
+      // fixed point offset will be divided too
+      result *= FIXED_POINT_OFFSET;
+      result /= value;
+      break;
+
+    default:
+      break;
+  }
+}
+
