@@ -1,33 +1,60 @@
 name: praxiom-firmware
+
 on:
   push:
     branches: [ main ]
+    tags: [ 'v*' ]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-22.04
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
           submodules: recursive
+          fetch-depth: 0
 
-      - name: Install toolchain
+      - name: Install ARM toolchain and build deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build \
+          sudo apt-get install -y \
+            cmake ninja-build \
             gcc-arm-none-eabi g++-arm-none-eabi binutils-arm-none-eabi
 
-      - name: Configure
+      - name: Configure (CMake + Ninja)
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
-        run: cmake --build build -j
+        run: cmake --build build -j"$(nproc)"
 
-      - name: Publish artifacts
+      - name: List build outputs
+        run: |
+          echo "==> Top-level build dir"
+          du -h -d1 build || true
+          echo "==> Firmware outputs (build/src)"
+          ls -lAh build/src || true
+          echo "==> Map files (if generated)"
+          find build -name '*.map' -print || true
+
+      - name: Upload firmware artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: praxiom-firmware
+          name: praxiom-firmware-${{ github.sha }}
+          if-no-files-found: error
           path: |
             build/src/*.out
             build/src/*.zip
+            build/src/*.bin
+            build/src/*.hex
+            build/**/*.map
