@@ -1,0 +1,20 @@
+name: build-praxiom-firmware
+on: [push]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clone InfiniTime & build
+        run: |
+          git clone https://github.com/InfiniTimeOrg/InfiniTime.git
+          rsync -av firmware/ InfiniTime/firmware/
+          cd InfiniTime
+          git apply firmware/patches/minimal.patch || true
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DPRAXIOM_ENABLE=ON -DINFITIME_DISABLE_GAMES=ON
+          cmake --build build -j
+      - name: Upload DFU
+        uses: actions/upload-artifact@v4
+        with:
+          name: praxiom-dfu
+          path: InfiniTime/build/pinetime-mcuboot-app-dfu.zip
