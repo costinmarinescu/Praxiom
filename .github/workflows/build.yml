@@ -68,4 +68,30 @@ jobs:
           echo "toolchain root:    $ROOT"
           echo "toolchain_root=$ROOT" >> "$GITHUB_OUTPUT"
 
-      - n
+      - name: Configure (CMake + Ninja)
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DARM_NONE_EABI_TOOLCHAIN_PATH='${{ steps.detect.outputs.toolchain_root }}' \
+            -DNRF5_SDK_PATH='${{ env.NRF5_SDK_PATH }}'
+
+      - name: Build
+        run: cmake --build build -j"$(nproc)"
+
+      - name: List build outputs
+        run: |
+          echo "==> Firmware outputs (build/src)"
+          ls -lAh build/src || true
+          echo "==> Map files (if generated)"
+          find build -name '*.map' -print || true
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: praxiom-firmware-${{ github.sha }}
+          if-no-files-found: error
+          path: |
+            build/src/*.out
+            build/src/*.zip
+            build/src/*.bin
+            build/src/*.hex
+            build/**/*.map
