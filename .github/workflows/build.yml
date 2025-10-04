@@ -28,23 +28,32 @@ jobs:
       - name: Install ARM toolchain and build deps
         run: |
           sudo apt-get update
-          # NOTE: Jammy has no separate g++-arm-none-eabi package.
-          # arm-none-eabi-c++ is provided by gcc-arm-none-eabi.
           sudo apt-get install -y \
             cmake ninja-build \
             gcc-arm-none-eabi binutils-arm-none-eabi \
             libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib
 
+      - name: Detect ARM toolchain root
+        id: detect
+        shell: bash
+        run: |
+          # Find the installed cross-compiler and derive its root (/usr)
+          BIN="$(which arm-none-eabi-gcc)"
+          ROOT="$(dirname "$(dirname "$BIN")")"
+          echo "arm-none-eabi-gcc at: $BIN"
+          echo "Toolchain root: $ROOT"
+          echo "toolchain_root=$ROOT" >> "$GITHUB_OUTPUT"
+
       - name: Configure (CMake + Ninja)
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DARM_NONE_EABI_TOOLCHAIN_PATH='${{ steps.detect.outputs.toolchain_root }}'
 
       - name: Build
         run: cmake --build build -j"$(nproc)"
 
       - name: List build outputs
         run: |
-          echo "==> Top-level build dir"
-          du -h -d1 build || true
           echo "==> Firmware outputs (build/src)"
           ls -lAh build/src || true
           echo "==> Map files (if generated)"
