@@ -1,5 +1,4 @@
-name: build
-
+name: praxiom-firmware
 on:
   push:
     branches: [ main ]
@@ -7,74 +6,28 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
-
+    runs-on: ubuntu-22.04
     steps:
-      - name: Checkout (with submodules)
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           submodules: recursive
-          fetch-depth: 1
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      # --- NEW: Python deps for imgtool + DFU ---
-      - name: Install Python tooling and mcuboot/DFU deps
+      - name: Install toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-pip
-          python3 -m pip install --user --upgrade pip
-          python3 -m pip install --user cbor2 adafruit-nrfutil intelhex
-      - name: Add user-local Python bin to PATH
-        run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          sudo apt-get install -y cmake ninja-build \
+            gcc-arm-none-eabi g++-arm-none-eabi binutils-arm-none-eabi
 
-      - name: Install lv_font_conv
-        run: |
-          sudo npm i -g lv_font_conv
-          which lv_font_conv
-          lv_font_conv --version
-
-      - name: Install toolchains and build deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            gcc-arm-none-eabi binutils-arm-none-eabi libnewlib-arm-none-eabi \
-            ninja-build cmake unzip curl
-
-      - name: Cache nRF5 SDK
-        uses: actions/cache@v4
-        with:
-          path: $HOME/sdk/nrf5
-          key: nrf5sdk-17.0.2
-
-      - name: Fetch nRF5 SDK if cache miss
-        if: ${{ steps.cache.outputs.cache-hit != 'true' }}
-        run: |
-          mkdir -p "$HOME/sdk"
-          cd "$HOME/sdk"
-          curl -L -o nrf5.zip https://developer.nordicsemi.com/nRF5_SDK/nRF5_SDK_v17.x.x/nRF5_SDK_17.0.2_d674dde.zip
-          unzip -q nrf5.zip
-          rm -f nrf5.zip
-          mv nRF5_SDK_17.0.2_d674dde nrf5
-
-      - name: Ensure optional CMake include
-        run: |
-          if ! grep -q 'firmware/CMakeLists.additions.txt' CMakeLists.txt; then
-            echo 'include(${CMAKE_SOURCE_DIR}/firmware/CMakeLists.additions.txt OPTIONAL)' >> CMakeLists.txt
-          fi
-
-      - name: Configure (CMake)
-        run: |
-          cmake -B build -S . -G "Ninja" \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DARM_NONE_EABI_TOOLCHAIN_PATH=/usr \
-            -DNRF5_SDK_PATH=$HOME/sdk/nrf5 \
-            -DPRAXIOM_ENABLE=ON \
-            -DINFITIME_DISABLE_GAMES=ON \
-            -DBUILD_DFU=ON
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
         run: cmake --build build -j
+
+      - name: Publish artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: praxiom-firmware
+          path: |
+            build/src/*.out
+            build/src/*.zip
