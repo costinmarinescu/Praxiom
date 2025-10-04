@@ -1,7 +1,7 @@
 #pragma once
 
 #include "displayapp/screens/Screen.h"
-#include "Controllers.h"
+#include "displayapp/Controllers.h"
 
 namespace Pinetime {
   namespace Applications {
