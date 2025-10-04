@@ -1,7 +1,7 @@
 #pragma once
 #include <array>
 #include "displayapp/apps/Apps.h"
-#include "Controllers.h"
+#include "displayapp/Controllers.h"
 
 #include "displayapp/screens/Alarm.h"
 #include "displayapp/screens/Dice.h"
