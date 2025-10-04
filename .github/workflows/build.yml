@@ -28,9 +28,12 @@ jobs:
       - name: Install ARM toolchain and build deps
         run: |
           sudo apt-get update
+          # NOTE: Jammy has no separate g++-arm-none-eabi package.
+          # arm-none-eabi-c++ is provided by gcc-arm-none-eabi.
           sudo apt-get install -y \
             cmake ninja-build \
-            gcc-arm-none-eabi g++-arm-none-eabi binutils-arm-none-eabi
+            gcc-arm-none-eabi binutils-arm-none-eabi \
+            libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib
 
       - name: Configure (CMake + Ninja)
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
