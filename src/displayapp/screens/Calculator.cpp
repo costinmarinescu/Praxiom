@@ -1,4 +1,5 @@
 #include <cmath>
+#include <cinttypes>
 #include "Calculator.h"
 #include "displayapp/InfiniTimeTheme.h"
 #include "Symbols.h"
@@ -14,7 +15,7 @@ Calculator::~Calculator() {
   lv_obj_clean(lv_scr_act());
 }
 
-constexpr const char* const buttonMap[] = {
+static constexpr const char* const buttonMap[] = {
   "7", "8", "9", Symbols::backspace, "\n",
   "4", "5", "6", "+ -", "\n",
   "1", "2", "3", "* /", "\n",
@@ -25,14 +26,14 @@ Calculator::Calculator() {
   resultLabel = lv_label_create(lv_scr_act(), nullptr);
   lv_label_set_long_mode(resultLabel, LV_LABEL_LONG_CROP);
   lv_label_set_align(resultLabel, LV_LABEL_ALIGN_RIGHT);
-  lv_label_set_text_fmt(resultLabel, "%lld", static_cast<long long>(result));
+  lv_label_set_text_fmt(resultLabel, "%" PRId64, result);
   lv_obj_set_size(resultLabel, 200, 20);
   lv_obj_set_pos(resultLabel, 10, 5);
 
   valueLabel = lv_label_create(lv_scr_act(), nullptr);
   lv_label_set_long_mode(valueLabel, LV_LABEL_LONG_CROP);
   lv_label_set_align(valueLabel, LV_LABEL_ALIGN_RIGHT);
-  lv_label_set_text_fmt(valueLabel, "%lld", static_cast<long long>(value));
+  lv_label_set_text_fmt(valueLabel, "%" PRId64, value);
   lv_obj_set_size(valueLabel, 200, 20);
   lv_obj_set_pos(valueLabel, 10, 35);
 
@@ -63,7 +64,6 @@ void Calculator::OnButtonEvent(lv_obj_t* obj, lv_event_t event) {
 
 void Calculator::HandleInput() {
   const char* buttonText = lv_btnmatrix_get_active_btn_text(buttonMatrix);
-
   if (buttonText == nullptr) {
     return;
   }
@@ -73,7 +73,7 @@ void Calculator::HandleInput() {
     UpdateOperation();
   }
 
-  // we only compare the first char because it is enough
+  // Compare only the first character; it's enough for our buttons
   switch (*buttonText) {
     case '0':
     case '1':
@@ -85,18 +85,15 @@ void Calculator::HandleInput() {
     case '7':
     case '8':
     case '9': {
-      // *buttonText is the first char in buttonText
-      // "- '0'" results in the int value of the char
-      uint8_t digit = (*buttonText) - '0';
+      uint8_t digit = static_cast<uint8_t>(*buttonText - '0');
       int8_t sign = (value < 0) ? -1 : 1;
 
-      // if this is true, we already pressed the . button
       if (offset < FIXED_POINT_OFFSET) {
-        value += sign * offset * digit;
+        value += static_cast<int64_t>(sign) * offset * digit;
         offset /= 10;
       } else if (value <= MAX_VALUE / 10) {
         value *= 10;
-        value += sign * offset * digit;
+        value += static_cast<int64_t>(sign) * offset * digit;
       }
     } break;
 
@@ -111,54 +108,37 @@ void Calculator::HandleInput() {
       }
       break;
 
-    // for every operator we:
-    // - eval the current operator if value > FIXED_POINT_OFFSET
-    // - then set the new operator
-    // - + and - as well as * and / cycle on the same button
+    // operators: pressing + cycles + -> - -> clear
     case '+':
       if (value != 0) {
         Eval();
         ResetInput();
       }
-
       switch (operation) {
-        case '+':
-          operation = '-';
-          break;
-        case '-':
-          operation = ' ';
-          break;
-        default:
-          operation = '+';
-          break;
+        case '+': operation = '-'; break;
+        case '-': operation = ' '; break;
+        default:  operation = '+'; break;
       }
       UpdateOperation();
       break;
 
+    // operators: pressing * cycles * -> / -> clear
     case '*':
       if (value != 0) {
         Eval();
         ResetInput();
       }
-
       switch (operation) {
-        case '*':
-          operation = '/';
-          break;
-        case '/':
-          operation = ' ';
-          break;
-        default:
-          operation = '*';
-          break;
+        case '*': operation = '/'; break;
+        case '/': operation = ' '; break;
+        default:  operation = '*'; break;
       }
       UpdateOperation();
       break;
 
-    // this is a little hacky because it matches only the first char
+    // backspace (match only the first byte of the symbol)
     case Symbols::backspace[0]:
       if (value != 0) {
-        // delete one value digit
         if (offset < FIXED_POINT_OFFSET) {
           if (offset == 0) {
             offset = 1;
@@ -193,18 +173,19 @@ void Calculator::HandleInput() {
     case '=':
       equalSignPressedBefore = true;
       Eval();
-      // If the operation is ' ' then we move the value to the result.
-      // We reset the input after this.
-      // This seems more convenient.
       if (operation == ' ') {
         ResetInput();
       }
       break;
-  }
+
+    default:
+      // ignore other keys (like spaces in map)
+      break;
+  } // <== closes switch
 
   UpdateValueLabel();
   UpdateResultLabel();
-}
+} // <== closes HandleInput
 
 void Calculator::UpdateOperation() const {
   switch (operation) {
@@ -252,7 +233,7 @@ void Calculator::UpdateResultLabel() const {
   bool negative = (remainder < 0);
 
   if (remainder == 0) {
-    lv_label_set_text_fmt(resultLabel, "%lld", static_cast<long long>(integer));
+    lv_label_set_text_fmt(resultLabel, "%" PRId64, integer);
     return;
   }
 
@@ -262,19 +243,16 @@ void Calculator::UpdateResultLabel() const {
 
   uint8_t minWidth = N_DECIMALS;
 
-  // cut "0"-digits on the right
+  // trim trailing zeros
   while ((remainder > 0) && (remainder % 10 == 0)) {
     remainder /= 10;
     minWidth--;
   }
 
   if ((integer == 0) && negative) {
-    lv_label_set_text_fmt(resultLabel, "-0.%0*lld", minWidth, static_cast<long long>(remainder));
+    lv_label_set_text_fmt(resultLabel, "-0.%0*" PRId64, minWidth, remainder);
   } else {
-    lv_label_set_text_fmt(resultLabel, "%lld.%0*lld",
-                          static_cast<long long>(integer),
-                          minWidth,
-                          static_cast<long long>(remainder));
+    lv_label_set_text_fmt(resultLabel, "%" PRId64 ".%0*" PRId64, integer, minWidth, remainder);
   }
 }
 
@@ -291,7 +269,6 @@ void Calculator::UpdateValueLabel() {
       int64_t integer = value / FIXED_POINT_OFFSET;
       int64_t remainder = value % FIXED_POINT_OFFSET;
       bool negative = (remainder < 0);
-
       int64_t printRemainder = (remainder < 0) ? -remainder : remainder;
 
       uint8_t minWidth = 0;
@@ -312,22 +289,18 @@ void Calculator::UpdateValueLabel() {
       }
 
       if ((integer == 0) && negative) {
-        lv_label_set_text_fmt(valueLabel, "-0.%0*lld", minWidth, static_cast<long long>(printRemainder));
+        lv_label_set_text_fmt(valueLabel, "-0.%0*" PRId64, minWidth, printRemainder);
       } else if (offset == FIXED_POINT_OFFSET) {
-        lv_label_set_text_fmt(valueLabel, "%lld", static_cast<long long>(integer));
+        lv_label_set_text_fmt(valueLabel, "%" PRId64, integer);
       } else if ((offset == (FIXED_POINT_OFFSET / 10)) && (remainder == 0)) {
-        lv_label_set_text_fmt(valueLabel, "%lld.", static_cast<long long>(integer));
+        lv_label_set_text_fmt(valueLabel, "%" PRId64 ".", integer);
       } else {
-        lv_label_set_text_fmt(valueLabel, "%lld.%0*lld",
-                              static_cast<long long>(integer),
-                              minWidth,
-                              static_cast<long long>(printRemainder));
+        lv_label_set_text_fmt(valueLabel, "%" PRId64 ".%0*" PRId64, integer, minWidth, printRemainder);
       }
     } break;
   }
 }
 
-// update the result based on value and operation
 void Calculator::Eval() {
   switch (operation) {
     case ' ':
@@ -335,45 +308,38 @@ void Calculator::Eval() {
       break;
 
     case '+':
-      // check for overflow
-      if (((result > 0) && (value > (MAX_VALUE - result))) || ((result < 0) && (value < (MIN_VALUE - result)))) {
+      if (((result > 0) && (value > (MAX_VALUE - result))) ||
+          ((result < 0) && (value < (MIN_VALUE - result)))) {
         error = Error::TooLarge;
         break;
       }
-
       result += value;
       break;
+
     case '-':
-      // check for overflow
-      if (((result < 0) && (value > (MAX_VALUE + result))) || ((result > 0) && (value < (MIN_VALUE + result)))) {
+      if (((result < 0) && (value > (MAX_VALUE + result))) ||
+          ((result > 0) && (value < (MIN_VALUE + result)))) {
         error = Error::TooLarge;
         break;
       }
-
       result -= value;
       break;
+
     case '*':
-      // check for overflow
-      // while dividing we eliminate the fixed point offset
-      // therefore we have to multiply it again for the comparison with value
-      // we also assume here that MAX_VALUE == -MIN_VALUE
-      if ((result != 0) && (std::abs(value) > (FIXED_POINT_OFFSET * (MAX_VALUE / std::abs(result))))) {
+      if ((result != 0) &&
+          (std::abs(value) > (FIXED_POINT_OFFSET * (MAX_VALUE / std::abs(result))))) {
         error = Error::TooLarge;
         break;
       }
-
       result *= value;
-      // fixed point offset was multiplied too
       result /= FIXED_POINT_OFFSET;
       break;
+
     case '/':
-      // check for zero division
       if (value == 0) {
         error = Error::ZeroDivision;
         break;
       }
-
-      // fixed point offset will be divided too
       result *= FIXED_POINT_OFFSET;
       result /= value;
       break;
@@ -382,4 +348,3 @@ void Calculator::Eval() {
       break;
   }
 }
-
