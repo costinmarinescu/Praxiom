@@ -1,5 +1,4 @@
 #include <cmath>
-#include <cinttypes>
 #include <cstdlib>
 #include "Calculator.h"
 #include "displayapp/InfiniTimeTheme.h"
@@ -16,7 +15,7 @@ Calculator::~Calculator() {
   lv_obj_clean(lv_scr_act());
 }
 
-static constexpr const char* const buttonMap[] = {
+static const char* const buttonMap[] = {
   "7", "8", "9", Symbols::backspace, "\n",
   "4", "5", "6", "+ -", "\n",
   "1", "2", "3", "* /", "\n",
@@ -27,21 +26,21 @@ Calculator::Calculator() {
   resultLabel = lv_label_create(lv_scr_act(), nullptr);
   lv_label_set_long_mode(resultLabel, LV_LABEL_LONG_CROP);
   lv_label_set_align(resultLabel, LV_LABEL_ALIGN_RIGHT);
-  lv_label_set_text_fmt(resultLabel, "%" PRId64, result);
+  lv_label_set_text_fmt(resultLabel, "%lld", static_cast<long long>(result));
   lv_obj_set_size(resultLabel, 200, 20);
   lv_obj_set_pos(resultLabel, 10, 5);
 
   valueLabel = lv_label_create(lv_scr_act(), nullptr);
   lv_label_set_long_mode(valueLabel, LV_LABEL_LONG_CROP);
   lv_label_set_align(valueLabel, LV_LABEL_ALIGN_RIGHT);
-  lv_label_set_text_fmt(valueLabel, "%" PRId64, value);
+  lv_label_set_text_fmt(valueLabel, "%lld", static_cast<long long>(value));
   lv_obj_set_size(valueLabel, 200, 20);
   lv_obj_set_pos(valueLabel, 10, 35);
 
   buttonMatrix = lv_btnmatrix_create(lv_scr_act(), nullptr);
   buttonMatrix->user_data = this;
   lv_obj_set_event_cb(buttonMatrix, eventHandler);
-  lv_btnmatrix_set_map(buttonMatrix, const_cast<const char**>(buttonMap));
+  lv_btnmatrix_set_map(buttonMatrix, buttonMap);
   lv_btnmatrix_set_one_check(buttonMatrix, true);
   lv_obj_set_size(buttonMatrix, 238, 180);
   lv_obj_set_style_local_bg_color(buttonMatrix, LV_BTNMATRIX_PART_BTN, LV_STATE_DEFAULT, Colors::bgAlt);
@@ -65,27 +64,16 @@ void Calculator::OnButtonEvent(lv_obj_t* obj, lv_event_t event) {
 
 void Calculator::HandleInput() {
   const char* buttonText = lv_btnmatrix_get_active_btn_text(buttonMatrix);
-  if (buttonText == nullptr) {
-    return;
-  }
+  if (buttonText == nullptr) return;
 
   if ((equalSignPressedBefore && (*buttonText != '=')) || (error != Error::None)) {
     ResetInput();
     UpdateOperation();
   }
 
-  // Compare only the first character; it's enough for our buttons
   switch (*buttonText) {
-    case '0':
-    case '1':
-    case '2':
-    case '3':
-    case '4':
-    case '5':
-    case '6':
-    case '7':
-    case '8':
-    case '9': {
+    case '0': case '1': case '2': case '3': case '4':
+    case '5': case '6': case '7': case '8': case '9': {
       uint8_t digit = static_cast<uint8_t>(*buttonText - '0');
       int8_t sign = (value < 0) ? -1 : 1;
 
@@ -180,13 +168,12 @@ void Calculator::HandleInput() {
       break;
 
     default:
-      // ignore other keys (like spaces in map)
       break;
-  } // <== closes switch
+  }
 
   UpdateValueLabel();
   UpdateResultLabel();
-} // <== closes HandleInput
+}
 
 void Calculator::UpdateOperation() const {
   switch (operation) {
@@ -234,7 +221,7 @@ void Calculator::UpdateResultLabel() const {
   bool negative = (remainder < 0);
 
   if (remainder == 0) {
-    lv_label_set_text_fmt(resultLabel, "%" PRId64, integer);
+    lv_label_set_text_fmt(resultLabel, "%lld", static_cast<long long>(integer));
     return;
   }
 
@@ -251,9 +238,14 @@ void Calculator::UpdateResultLabel() const {
   }
 
   if ((integer == 0) && negative) {
-    lv_label_set_text_fmt(resultLabel, "-0.%0*" PRId64, minWidth, remainder);
+    lv_label_set_text_fmt(resultLabel, "-0.%0*lld",
+                          static_cast<int>(minWidth),
+                          static_cast<long long>(remainder));
   } else {
-    lv_label_set_text_fmt(resultLabel, "%" PRId64 ".%0*" PRId64, integer, minWidth, remainder);
+    lv_label_set_text_fmt(resultLabel, "%lld.%0*lld",
+                          static_cast<long long>(integer),
+                          static_cast<int>(minWidth),
+                          static_cast<long long>(remainder));
   }
 }
 
@@ -290,13 +282,19 @@ void Calculator::UpdateValueLabel() {
       }
 
       if ((integer == 0) && negative) {
-        lv_label_set_text_fmt(valueLabel, "-0.%0*" PRId64, minWidth, printRemainder);
+        lv_label_set_text_fmt(valueLabel, "-0.%0*lld",
+                              static_cast<int>(minWidth),
+                              static_cast<long long>(printRemainder));
       } else if (offset == FIXED_POINT_OFFSET) {
-        lv_label_set_text_fmt(valueLabel, "%" PRId64, integer);
+        lv_label_set_text_fmt(valueLabel, "%lld", static_cast<long long>(integer));
       } else if ((offset == (FIXED_POINT_OFFSET / 10)) && (remainder == 0)) {
-        lv_label_set_text_fmt(valueLabel, "%" PRId64 ".", integer);
+        lv_label_set_text_fmt(valueLabel, "%lld.",
+                              static_cast<long long>(integer));
       } else {
-        lv_label_set_text_fmt(valueLabel, "%" PRId64 ".%0*" PRId64, integer, minWidth, printRemainder);
+        lv_label_set_text_fmt(valueLabel, "%lld.%0*lld",
+                              static_cast<long long>(integer),
+                              static_cast<int>(minWidth),
+                              static_cast<long long>(printRemainder));
       }
     } break;
   }
@@ -328,7 +326,8 @@ void Calculator::Eval() {
 
     case '*': {
       if ((result != 0) &&
-          (llabs(value) > (FIXED_POINT_OFFSET * (MAX_VALUE / llabs(result))))) {
+          (llabs(static_cast<long long>(value)) >
+           (FIXED_POINT_OFFSET * (MAX_VALUE / llabs(static_cast<long long>(result)))))) {
         error = Error::TooLarge;
         break;
       }
