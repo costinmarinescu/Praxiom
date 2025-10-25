@@ -43,7 +43,7 @@ NimbleController::NimbleController(Pinetime::System::SystemTask& systemTask,
     currentTimeService {dateTimeController},
     musicService {*this},
     weatherService {dateTimeController},
-    navService {*this},                    // ← ADDED THIS LINE
+    navService {},
     batteryInformationService {batteryController},
     immediateAlertService {systemTask, notificationManager},
     heartRateService {*this, heartRateController},
