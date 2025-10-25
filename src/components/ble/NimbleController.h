@@ -7,6 +7,7 @@
 #include <host/ble_gap.h>
 #undef max
 #undef min
+#include "components/ble/PraxiomHealthService.h"
 #include "components/ble/AlertNotificationClient.h"
 #include "components/ble/AlertNotificationService.h"
 #include "components/ble/BatteryInformationService.h"
@@ -106,6 +107,7 @@ namespace Pinetime {
       HeartRateService heartRateService;
       MotionService motionService;
       FSService fsService;
+      PraxiomHealthService praxiomHealthService;
       ServiceDiscovery serviceDiscovery;
 
       uint8_t addrType;
