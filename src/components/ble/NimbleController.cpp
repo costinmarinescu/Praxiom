@@ -37,20 +37,21 @@ NimbleController::NimbleController(Pinetime::System::SystemTask& systemTask,
     spiNorFlash {spiNorFlash},
     fs {fs},
     dfuService {systemTask, bleController, spiNorFlash},
-
     currentTimeClient {dateTimeController},
     anService {systemTask, notificationManager},
     alertNotificationClient {systemTask, notificationManager},
     currentTimeService {dateTimeController},
     musicService {*this},
     weatherService {dateTimeController},
+    navService {*this},                    // ← ADDED THIS LINE
     batteryInformationService {batteryController},
     immediateAlertService {systemTask, notificationManager},
     heartRateService {*this, heartRateController},
     motionService {*this, motionController},
     fsService {systemTask, fs},
     serviceDiscovery({&currentTimeClient, &alertNotificationClient}),
-    praxiomHealthService {*this}{
+    praxiomHealthService {*this}
+{
 }
 
 void nimble_on_reset(int reason) {
