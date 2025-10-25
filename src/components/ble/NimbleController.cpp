@@ -47,10 +47,10 @@ NimbleController::NimbleController(Pinetime::System::SystemTask& systemTask,
     batteryInformationService {batteryController},
     immediateAlertService {systemTask, notificationManager},
     heartRateService {*this, heartRateController},
-    praxiomHealthService {*this},
     motionService {*this, motionController},
     fsService {systemTask, fs},
-    serviceDiscovery({&currentTimeClient, &alertNotificationClient}) {
+    serviceDiscovery({&currentTimeClient, &alertNotificationClient}),
+    praxiomHealthService {*this}{
 }
 
 void nimble_on_reset(int reason) {
