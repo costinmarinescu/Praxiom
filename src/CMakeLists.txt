@@ -460,6 +460,7 @@ list(APPEND SOURCE_FILES
         components/ble/SimpleWeatherService.cpp
         components/ble/NavigationService.cpp
         components/ble/BatteryInformationService.cpp
+        components/ble/PraxiomHealthService.cpp
         components/ble/FSService.cpp
         components/ble/ImmediateAlertService.cpp
         components/ble/ServiceDiscovery.cpp
