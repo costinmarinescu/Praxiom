@@ -311,6 +311,53 @@ namespace Pinetime {
         return bleRadioEnabled;
       };
 
+      struct PraxiomHealthData {
+        uint16_t bioAgeDeciYears = 530;
+        uint8_t oralHealthScore = 0;
+        uint8_t systemicHealthScore = 0;
+        uint8_t fitnessScore = 0;
+        uint32_t lastSyncTimestamp = 0;
+      };
+
+      void SetPraxiomBioAge(uint16_t bioAgeTenths) {
+        if (bioAgeTenths == 0) {
+          bioAgeTenths = 530;
+        }
+        if (settings.praxiomHealth.bioAgeDeciYears != bioAgeTenths) {
+          settingsChanged = true;
+        }
+        settings.praxiomHealth.bioAgeDeciYears = bioAgeTenths;
+      };
+
+      uint16_t GetPraxiomBioAge() const {
+        return settings.praxiomHealth.bioAgeDeciYears == 0 ? 530 : settings.praxiomHealth.bioAgeDeciYears;
+      };
+
+      void SetPraxiomScores(uint8_t oral, uint8_t systemic, uint8_t fitness) {
+        if (settings.praxiomHealth.oralHealthScore != oral || settings.praxiomHealth.systemicHealthScore != systemic ||
+            settings.praxiomHealth.fitnessScore != fitness) {
+          settingsChanged = true;
+        }
+        settings.praxiomHealth.oralHealthScore = oral;
+        settings.praxiomHealth.systemicHealthScore = systemic;
+        settings.praxiomHealth.fitnessScore = fitness;
+      };
+
+      PraxiomHealthData GetPraxiomHealthData() const {
+        return settings.praxiomHealth;
+      };
+
+      void SetPraxiomLastSync(uint32_t timestamp) {
+        if (settings.praxiomHealth.lastSyncTimestamp != timestamp) {
+          settingsChanged = true;
+        }
+        settings.praxiomHealth.lastSyncTimestamp = timestamp;
+      };
+
+      uint32_t GetPraxiomLastSync() const {
+        return settings.praxiomHealth.lastSyncTimestamp;
+      };
+
       void SetDfuAndFsMode(DfuAndFsMode mode) {
         if (mode == GetDfuAndFsMode()) {
           return;
@@ -365,6 +412,8 @@ namespace Pinetime {
         Controllers::BrightnessController::Levels brightLevel = Controllers::BrightnessController::Levels::Medium;
 
         bool dfuAndFsEnabledOnBoot = false;
+
+        PraxiomHealthData praxiomHealth;
       };
 
       SettingsData settings;
