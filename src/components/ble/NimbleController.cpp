@@ -30,6 +30,7 @@ NimbleController::NimbleController(Pinetime::System::SystemTask& systemTask,
                                    Pinetime::Drivers::SpiNorFlash& spiNorFlash,
                                    HeartRateController& heartRateController,
                                    MotionController& motionController,
+                                   Settings& settingsController,
                                    FS& fs)
   : systemTask {systemTask},
     bleController {bleController},
@@ -48,6 +49,7 @@ NimbleController::NimbleController(Pinetime::System::SystemTask& systemTask,
     immediateAlertService {systemTask, notificationManager},
     heartRateService {*this, heartRateController},
     motionService {*this, motionController},
+    praxiomService {*this, settingsController, dateTimeController, heartRateController, motionController},
     fsService {systemTask, fs},
     serviceDiscovery({&currentTimeClient, &alertNotificationClient}) {
 }
@@ -97,6 +99,7 @@ void NimbleController::Init() {
   immediateAlertService.Init();
   heartRateService.Init();
   motionService.Init();
+  praxiomService.Init();
   fsService.Init();
 
   int rc;
@@ -161,8 +164,9 @@ void NimbleController::StartAdvertising() {
   fields.uuids16 = &HeartRateService::heartRateServiceUuid;
   fields.num_uuids16 = 1;
   fields.uuids16_is_complete = 1;
-  fields.uuids128 = &DfuService::serviceUuid;
-  fields.num_uuids128 = 1;
+  ble_uuid128_t advUuids128[2] = {DfuService::serviceUuid, PraxiomService::serviceUuid};
+  fields.uuids128 = advUuids128;
+  fields.num_uuids128 = 2;
   fields.uuids128_is_complete = 1;
   fields.tx_pwr_lvl = BLE_HS_ADV_TX_PWR_LVL_AUTO;
 
@@ -209,6 +213,7 @@ int NimbleController::OnGAPEvent(ble_gap_event* event) {
         bleController.Connect();
         systemTask.PushMessage(Pinetime::System::Messages::BleConnected);
         // Service discovery is deferred via systemtask
+        praxiomService.OnConnected();
       }
       break;
 
@@ -223,6 +228,7 @@ int NimbleController::OnGAPEvent(ble_gap_event* event) {
 
       currentTimeClient.Reset();
       alertNotificationClient.Reset();
+      praxiomService.OnDisconnected();
       connectionHandle = BLE_HS_CONN_HANDLE_NONE;
       if (bleController.IsConnected()) {
         bleController.Disconnect();
@@ -325,12 +331,15 @@ int NimbleController::OnGAPEvent(ble_gap_event* event) {
       if (event->subscribe.reason == BLE_GAP_SUBSCRIBE_REASON_TERM) {
         heartRateService.UnsubscribeNotification(event->subscribe.attr_handle);
         motionService.UnsubscribeNotification(event->subscribe.attr_handle);
+        praxiomService.UnsubscribeNotification(event->subscribe.attr_handle);
       } else if (event->subscribe.prev_notify == 0 && event->subscribe.cur_notify == 1) {
         heartRateService.SubscribeNotification(event->subscribe.attr_handle);
         motionService.SubscribeNotification(event->subscribe.attr_handle);
+        praxiomService.SubscribeNotification(event->subscribe.attr_handle);
       } else if (event->subscribe.prev_notify == 1 && event->subscribe.cur_notify == 0) {
         heartRateService.UnsubscribeNotification(event->subscribe.attr_handle);
         motionService.UnsubscribeNotification(event->subscribe.attr_handle);
+        praxiomService.UnsubscribeNotification(event->subscribe.attr_handle);
       }
       break;
 
