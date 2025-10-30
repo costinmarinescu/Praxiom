@@ -5,6 +5,7 @@
 #include "BootloaderVersion.h"
 #include "components/battery/BatteryController.h"
 #include "components/ble/BleController.h"
+#include "components/ble/PraxiomService.h"
 #include "displayapp/TouchEvents.h"
 #include "drivers/Cst816s.h"
 #include "drivers/St7789.h"
@@ -82,6 +83,7 @@ SystemTask::SystemTask(Drivers::SpiMaster& spi,
                      motionController,
                      settingsController,
                      fs) {
+  Pinetime::Controllers::PraxiomService::BindSettings(settingsController);
 }
 
 void SystemTask::Start() {
