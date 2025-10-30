@@ -393,6 +393,7 @@ list(APPEND SOURCE_FILES
         displayapp/screens/Steps.cpp
         displayapp/screens/Timer.cpp
         displayapp/screens/Dice.cpp
+        displayapp/screens/PraxiomHealth.cpp
         displayapp/screens/PassKey.cpp
         displayapp/screens/Error.cpp
         displayapp/screens/Alarm.cpp
@@ -465,6 +466,7 @@ list(APPEND SOURCE_FILES
         components/ble/ServiceDiscovery.cpp
         components/ble/HeartRateService.cpp
         components/ble/MotionService.cpp
+        components/ble/PraxiomService.cpp
         components/firmwarevalidator/FirmwareValidator.cpp
         components/motor/MotorController.cpp
         components/settings/Settings.cpp
@@ -492,6 +494,7 @@ list(APPEND SOURCE_FILES
         touchhandler/TouchHandler.cpp
 
         utility/Math.cpp
+        utility/PraxiomHealth.cpp
         )
 
 list(APPEND RECOVERY_SOURCE_FILES
@@ -536,6 +539,7 @@ list(APPEND RECOVERY_SOURCE_FILES
         components/ble/HeartRateService.cpp
         components/ble/MotionService.cpp
         components/firmwarevalidator/FirmwareValidator.cpp
+        components/ble/PraxiomService.cpp
         components/settings/Settings.cpp
         components/timer/Timer.cpp
         components/alarm/AlarmController.cpp
@@ -559,6 +563,7 @@ list(APPEND RECOVERY_SOURCE_FILES
         touchhandler/TouchHandler.cpp
 
         utility/Math.cpp
+        utility/PraxiomHealth.cpp
         )
 
 list(APPEND RECOVERYLOADER_SOURCE_FILES
