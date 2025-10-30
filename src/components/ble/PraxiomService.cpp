@@ -13,6 +13,7 @@ using namespace Pinetime::Controllers;
 
 namespace {
   int PraxiomServiceCallback(uint16_t connHandle, uint16_t attrHandle, struct ble_gatt_access_ctxt* ctxt, void* arg) {
+    (void)connHandle;
     auto* service = static_cast<PraxiomService*>(arg);
     return service->OnCommand(attrHandle, ctxt);
   }
