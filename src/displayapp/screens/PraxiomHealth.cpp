@@ -88,4 +88,3 @@ std::string PraxiomHealth::BuildLastSyncLabel(uint32_t lastSyncTimestamp) const 
   std::snprintf(buffer, sizeof(buffer), "Last Sync: %lld d ago", static_cast<long long>(diff / 86400));
   return buffer;
 }
-
