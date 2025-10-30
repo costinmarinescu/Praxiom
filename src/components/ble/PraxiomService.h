@@ -25,10 +25,20 @@ namespace Pinetime {
     class PraxiomService {
     public:
       PraxiomService(NimbleController& nimble,
-                     Settings& settings,
                      DateTime& dateTimeController,
                      HeartRateController& heartRateController,
                      MotionController& motionController);
+
+      PraxiomService(NimbleController& nimble,
+                     Settings& settingsController,
+                     DateTime& dateTimeController,
+                     HeartRateController& heartRateController,
+                     MotionController& motionController)
+        : PraxiomService(nimble, dateTimeController, heartRateController, motionController) {
+        BindSettings(settingsController);
+      }
+
+      static void BindSettings(Settings& settingsController);
 
       void Init();
       int OnCommand(uint16_t attributeHandle, struct ble_gatt_access_ctxt* ctxt);
@@ -50,10 +60,10 @@ namespace Pinetime {
       void UpdateLastSync();
 
       NimbleController& nimble;
-      Settings& settings;
       DateTime& dateTimeController;
       HeartRateController& heartRateController;
       MotionController& motionController;
+      static Settings* settings;
 
       static constexpr ble_uuid128_t bioAgeUuid {
         .u = {.type = BLE_UUID_TYPE_128},
