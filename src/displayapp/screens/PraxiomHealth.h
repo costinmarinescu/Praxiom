@@ -2,6 +2,8 @@
 
 #include "displayapp/screens/Screen.h"
 #include "displayapp/screens/Symbols.h"
+#include "displayapp/apps/Apps.h"
+#include "displayapp/Controllers.h"
 #include "components/settings/Settings.h"
 #include "components/datetime/DateTimeController.h"
 
