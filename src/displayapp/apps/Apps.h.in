@@ -30,6 +30,7 @@ namespace Pinetime {
       Steps,
       Dice,
       Weather,
+      PraxiomHealth,
       PassKey,
       QuickSettings,
       Settings,
