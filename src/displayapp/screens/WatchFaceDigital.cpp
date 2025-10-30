@@ -13,6 +13,9 @@
 #include "components/heartrate/HeartRateController.h"
 #include "components/motion/MotionController.h"
 #include "components/settings/Settings.h"
+#include "utility/PraxiomHealth.h"
+
+#include <cmath>
 
 using namespace Pinetime::Applications::Screens;
 
@@ -33,8 +36,8 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
     motionController {motionController},
     weatherService {weatherService},
     statusIcons(batteryController, bleController, alarmController),
-    basePraxiomAge(53),  // Demo age - will be replaced when phone app connects
-    lastSyncTime(0) {
+    basePraxiomAgeTenths(settingsController.GetPraxiomBioAge()),
+    lastSyncTime(settingsController.GetPraxiomLastSync()) {
 
   // Create Praxiom brand gradient background (Orange/Amber to Teal/Cyan)
   lv_obj_t* background_gradient = lv_obj_create(lv_scr_act(), nullptr);
@@ -59,7 +62,8 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
 
   // Create Praxiom Age number - BOLD large digits - WHITE (neutral color)
   labelPraxiomAgeNumber = lv_label_create(lv_scr_act(), nullptr);
-  lv_label_set_text_static(labelPraxiomAgeNumber, "53");  // Initial demo value
+  float initialPraxiomAge = static_cast<float>(basePraxiomAgeTenths == 0 ? 530 : basePraxiomAgeTenths) / 10.0f;
+  lv_label_set_text_fmt(labelPraxiomAgeNumber, "%.1f", initialPraxiomAge);
   lv_obj_set_style_local_text_font(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_extrabold_compressed);  // BOLD font
   lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));  // Start with white
   lv_obj_align(labelPraxiomAgeNumber, lv_scr_act(), LV_ALIGN_CENTER, 0, -10);
@@ -115,82 +119,30 @@ WatchFaceDigital::~WatchFaceDigital() {
 }
 
 // Update base Praxiom Age from phone app (called via BLE)
-void WatchFaceDigital::UpdateBasePraxiomAge(int age) {
-  basePraxiomAge = age;
-  lastSyncTime = dateTimeController.CurrentDateTime().time_since_epoch().count();
-}
-
-// Calculate real-time adjustment based on watch sensors
-float WatchFaceDigital::CalculateRealtimeAdjustment() {
-  float adjustment = 0.0f;
-  
-  // Get current sensor data
-  uint8_t currentHeartRate = heartRateController.HeartRate();
-  uint32_t currentSteps = motionController.NbSteps();
-  
-  // Heart rate deviation adjustment (-1 to +2 years based on HR)
-  if (currentHeartRate > 0) {
-    if (currentHeartRate < 50 || currentHeartRate > 90) {
-      // Poor resting HR
-      adjustment += 1.5f;
-    } else if (currentHeartRate >= 50 && currentHeartRate <= 60) {
-      // Excellent resting HR
-      adjustment -= 0.5f;
-    } else if (currentHeartRate >= 61 && currentHeartRate <= 70) {
-      // Good resting HR
-      adjustment -= 0.2f;
-    } else if (currentHeartRate >= 71 && currentHeartRate <= 80) {
-      // Fair resting HR
-      adjustment += 0.3f;
-    } else {
-      // Suboptimal resting HR
-      adjustment += 0.8f;
-    }
-  }
-  
-  // Daily activity adjustment (-1 to +1 year based on steps)
-  if (currentSteps >= 10000) {
-    adjustment -= 0.8f;  // Excellent activity
-  } else if (currentSteps >= 8000) {
-    adjustment -= 0.3f;  // Good activity
-  } else if (currentSteps >= 5000) {
-    adjustment += 0.2f;  // Moderate activity
-  } else if (currentSteps >= 3000) {
-    adjustment += 0.5f;  // Low activity
-  } else {
-    adjustment += 1.0f;  // Sedentary
-  }
-  
-  // Cap adjustment to reasonable range
-  if (adjustment < -2.0f) adjustment = -2.0f;
-  if (adjustment > 3.0f) adjustment = 3.0f;
-  
-  return adjustment;
+void WatchFaceDigital::UpdateBasePraxiomAge(uint16_t ageTenths) {
+  basePraxiomAgeTenths = ageTenths;
+  auto now = std::chrono::duration_cast<std::chrono::seconds>(dateTimeController.CurrentDateTime().time_since_epoch());
+  lastSyncTime = static_cast<uint32_t>(now.count());
 }
 
 // Calculate final Praxiom Age
-int WatchFaceDigital::GetCurrentPraxiomAge() {
-  // Demo mode: basePraxiomAge = 53 until phone app connects and updates it
-  // Real mode: basePraxiomAge updated by phone app via UpdateBasePraxiomAge()
-  
-  float adjustment = CalculateRealtimeAdjustment();
-  int finalAge = basePraxiomAge + (int)adjustment;
-  
-  // Ensure reasonable bounds (18-120)
-  if (finalAge < 18) finalAge = 18;
-  if (finalAge > 120) finalAge = 120;
-  
-  return finalAge;
+float WatchFaceDigital::GetCurrentPraxiomAge() {
+  const uint16_t adjustedTenths = Pinetime::Praxiom::ComputeAdjustedBioAge(
+    basePraxiomAgeTenths,
+    heartRateController.HeartRate(),
+    motionController.NbSteps());
+
+  return static_cast<float>(adjustedTenths) / 10.0f;
 }
 
 // Get color based on Praxiom Age difference from base age
-lv_color_t WatchFaceDigital::GetPraxiomAgeColor(int currentAge, int baseAge) {
-  int difference = currentAge - baseAge;
-  
-  if (difference < -2) {
+lv_color_t WatchFaceDigital::GetPraxiomAgeColor(float currentAge, float baseAge) {
+  float difference = currentAge - baseAge;
+
+  if (difference <= -2.0f) {
     // More than 2 years younger - GREEN (excellent health)
     return lv_color_hex(0x00FF00);
-  } else if (difference > 2) {
+  } else if (difference >= 2.0f) {
     // More than 2 years older - RED (poor health)
     return lv_color_hex(0xFF0000);
   } else {
@@ -245,18 +197,24 @@ void WatchFaceDigital::Refresh() {
     lv_obj_realign(stepValue);
   }
 
+  uint16_t storedPraxiomTenths = settingsController.GetPraxiomBioAge();
+  if (storedPraxiomTenths != basePraxiomAgeTenths) {
+    basePraxiomAgeTenths = storedPraxiomTenths;
+  }
+
+  lastSyncTime = settingsController.GetPraxiomLastSync();
+  
   // Update Praxiom Age every minute with dynamic color
   static uint8_t lastMinute = 0;
   uint8_t currentMinute = dateTimeController.Minutes();
   
   if (currentMinute != lastMinute) {
-    int praxiomAge = GetCurrentPraxiomAge();
-    
-    // Update the number
-    lv_label_set_text_fmt(labelPraxiomAgeNumber, "%d", praxiomAge);
-    
-    // Update the color based on difference from base age
-    lv_color_t ageColor = GetPraxiomAgeColor(praxiomAge, basePraxiomAge);
+    float praxiomAge = GetCurrentPraxiomAge();
+    float baseAge = static_cast<float>(basePraxiomAgeTenths == 0 ? 530 : basePraxiomAgeTenths) / 10.0f;
+
+    lv_label_set_text_fmt(labelPraxiomAgeNumber, "%.1f", praxiomAge);
+
+    lv_color_t ageColor = GetPraxiomAgeColor(praxiomAge, baseAge);
     lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, ageColor);
     
     lv_obj_realign(labelPraxiomAgeNumber);
