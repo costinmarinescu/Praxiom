@@ -26,13 +26,13 @@ namespace {
   }
 }
 
+Settings* PraxiomService::settings = nullptr;
+
 PraxiomService::PraxiomService(NimbleController& nimble,
-                               Settings& settings,
                                DateTime& dateTimeController,
                                HeartRateController& heartRateController,
                                MotionController& motionController)
   : nimble {nimble},
-    settings {settings},
     dateTimeController {dateTimeController},
     heartRateController {heartRateController},
     motionController {motionController},
@@ -49,6 +49,10 @@ PraxiomService::PraxiomService(NimbleController& nimble,
                               {0}},
     serviceDefinition {{.type = BLE_GATT_SVC_TYPE_PRIMARY, .uuid = &serviceUuid.u, .characteristics = characteristicDefinition},
                        {0}} {
+}
+
+void PraxiomService::BindSettings(Settings& settingsController) {
+  settings = &settingsController;
 }
 
 void PraxiomService::Init() {
@@ -90,9 +94,13 @@ int PraxiomService::OnCommand(uint16_t attributeHandle, struct ble_gatt_access_c
 }
 
 void PraxiomService::HandleBioAgeWrite(uint16_t ageTenths) {
-  settings.SetPraxiomBioAge(ageTenths);
+  if (settings == nullptr) {
+    return;
+  }
+
+  settings->SetPraxiomBioAge(ageTenths);
   UpdateLastSync();
-  settings.SaveSettings();
+  settings->SaveSettings();
   NotifyCurrentHealthData();
 }
 
@@ -101,15 +109,19 @@ void PraxiomService::HandlePackageWrite(const uint8_t* data, uint16_t length) {
     return;
   }
 
+  if (settings == nullptr) {
+    return;
+  }
+
   const uint16_t bioAge = static_cast<uint16_t>(data[0]) | (static_cast<uint16_t>(data[1]) << 8);
   const uint8_t oral = data[2];
   const uint8_t systemic = data[3];
   const uint8_t fitness = data[4];
 
-  settings.SetPraxiomBioAge(bioAge);
-  settings.SetPraxiomScores(oral, systemic, fitness);
+  settings->SetPraxiomBioAge(bioAge);
+  settings->SetPraxiomScores(oral, systemic, fitness);
   UpdateLastSync();
-  settings.SaveSettings();
+  settings->SaveSettings();
 
   NotifyCurrentHealthData();
 }
@@ -132,12 +144,16 @@ void PraxiomService::NotifyCurrentHealthData() {
     return;
   }
 
+  if (settings == nullptr) {
+    return;
+  }
+
   uint16_t connectionHandle = nimble.connHandle();
   if (connectionHandle == 0 || connectionHandle == BLE_HS_CONN_HANDLE_NONE) {
     return;
   }
 
-  const auto healthData = settings.GetPraxiomHealthData();
+  const auto healthData = settings->GetPraxiomHealthData();
   const uint16_t adjustedAge = Pinetime::Praxiom::ComputeAdjustedBioAge(
     healthData.bioAgeDeciYears,
     heartRateController.HeartRate(),
@@ -172,6 +188,10 @@ void PraxiomService::OnDisconnected() {
 }
 
 void PraxiomService::UpdateLastSync() {
+  if (settings == nullptr) {
+    return;
+  }
+
   auto now = std::chrono::duration_cast<std::chrono::seconds>(dateTimeController.CurrentDateTime().time_since_epoch());
-  settings.SetPraxiomLastSync(static_cast<uint32_t>(now.count()));
+  settings->SetPraxiomLastSync(static_cast<uint32_t>(now.count()));
 }
