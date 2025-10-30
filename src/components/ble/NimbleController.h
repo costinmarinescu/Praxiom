@@ -21,6 +21,7 @@
 #include "components/ble/NavigationService.h"
 #include "components/ble/ServiceDiscovery.h"
 #include "components/ble/MotionService.h"
+#include "components/ble/PraxiomService.h"
 #include "components/ble/SimpleWeatherService.h"
 #include "components/fs/FS.h"
 
@@ -37,6 +38,10 @@ namespace Pinetime {
     class Ble;
     class DateTime;
     class NotificationManager;
+    class Battery;
+    class HeartRateController;
+    class MotionController;
+    class Settings;
 
     class NimbleController {
 
@@ -49,6 +54,7 @@ namespace Pinetime {
                        Pinetime::Drivers::SpiNorFlash& spiNorFlash,
                        HeartRateController& heartRateController,
                        MotionController& motionController,
+                       Settings& settingsController,
                        FS& fs);
       void Init();
       void StartAdvertising();
@@ -69,6 +75,10 @@ namespace Pinetime {
 
       Pinetime::Controllers::SimpleWeatherService& weather() {
         return weatherService;
+      };
+
+      Pinetime::Controllers::PraxiomService& praxiom() {
+        return praxiomService;
       };
 
       uint16_t connHandle();
@@ -105,6 +115,7 @@ namespace Pinetime {
       ImmediateAlertService immediateAlertService;
       HeartRateService heartRateService;
       MotionService motionService;
+      PraxiomService praxiomService;
       FSService fsService;
       ServiceDiscovery serviceDiscovery;
 
