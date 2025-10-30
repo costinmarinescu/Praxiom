@@ -49,9 +49,30 @@ NimbleController::NimbleController(Pinetime::System::SystemTask& systemTask,
     immediateAlertService {systemTask, notificationManager},
     heartRateService {*this, heartRateController},
     motionService {*this, motionController},
-    praxiomService {*this, settingsController, dateTimeController, heartRateController, motionController},
+    praxiomService {*this, dateTimeController, heartRateController, motionController},
     fsService {systemTask, fs},
     serviceDiscovery({&currentTimeClient, &alertNotificationClient}) {
+}
+NimbleController::NimbleController(Pinetime::System::SystemTask& systemTask,
+                                   Ble& bleController,
+                                   DateTime& dateTimeController,
+                                   NotificationManager& notificationManager,
+                                   Battery& batteryController,
+                                   Pinetime::Drivers::SpiNorFlash& spiNorFlash,
+                                   HeartRateController& heartRateController,
+                                   MotionController& motionController,
+                                   Settings& settingsController,
+                                   FS& fs)
+  : NimbleController(systemTask,
+                     bleController,
+                     dateTimeController,
+                     notificationManager,
+                     batteryController,
+                     spiNorFlash,
+                     heartRateController,
+                     motionController,
+                     fs) {
+  PraxiomService::BindSettings(settingsController);
 }
 
 void nimble_on_reset(int reason) {
