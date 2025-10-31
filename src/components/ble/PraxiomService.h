@@ -29,15 +29,6 @@ namespace Pinetime {
                      HeartRateController& heartRateController,
                      MotionController& motionController);
 
-      PraxiomService(NimbleController& nimble,
-                     Settings& settingsController,
-                     DateTime& dateTimeController,
-                     HeartRateController& heartRateController,
-                     MotionController& motionController)
-        : PraxiomService(nimble, dateTimeController, heartRateController, motionController) {
-        BindSettings(settingsController);
-      }
-
       static void BindSettings(Settings& settingsController);
 
       void Init();
@@ -79,7 +70,7 @@ namespace Pinetime {
       uint16_t bioAgeHandle = 0;
       uint16_t packageHandle = 0;
       bool packageNotifyEnabled = false;
-      TimerHandle_t periodicTimer = 0;
+      TimerHandle_t periodicTimer {};
     };
   }
 }
