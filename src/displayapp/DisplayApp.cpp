@@ -57,18 +57,20 @@
 
 #include <algorithm>
 
-using namespace Pinetime::Applications::Display;
-
 namespace {
+  using DisplayMessages = Pinetime::Applications::Display::Messages;
+
   inline bool in_isr() {
     return (SCB->ICSR & SCB_ICSR_VECTACTIVE_Msk) != 0;
   }
 
   void TimerCallback(TimerHandle_t xTimer) {
-    auto* dispApp = static_cast<DisplayApp*>(pvTimerGetTimerID(xTimer));
-    dispApp->PushMessage(Display::Messages::TimerDone);
+    auto* dispApp = static_cast<Pinetime::Applications::DisplayApp*>(pvTimerGetTimerID(xTimer));
+    dispApp->PushMessage(DisplayMessages::TimerDone);
   }
 }
+
+using Messages = Pinetime::Applications::Display::Messages;
 
 DisplayApp::DisplayApp(Drivers::St7789& lcd,
                        const Drivers::Cst816S& touchPanel,
