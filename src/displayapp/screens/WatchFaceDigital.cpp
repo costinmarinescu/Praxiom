@@ -17,6 +17,10 @@
 
 using namespace Pinetime::Applications::Screens;
 
+namespace {
+  constexpr uint16_t DefaultPraxiomAgeTenths = 530;  // 53.0 years shown when no data pushed yet
+}
+
 WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
                                    const Controllers::Battery& batteryController,
                                    const Controllers::Ble& bleController,
@@ -117,7 +121,7 @@ WatchFaceDigital::~WatchFaceDigital() {
 // Update base Praxiom Age from phone app (called via BLE)
 void WatchFaceDigital::UpdateBasePraxiomAge(uint16_t ageTenths) {
   if (ageTenths == 0) {
-    ageTenths = 530;
+    ageTenths = DefaultPraxiomAgeTenths;
   }
   basePraxiomAgeTenths = ageTenths;
   auto now = std::chrono::duration_cast<std::chrono::seconds>(dateTimeController.CurrentDateTime().time_since_epoch());
@@ -128,11 +132,11 @@ void WatchFaceDigital::UpdateBasePraxiomAge(uint16_t ageTenths) {
 
 // Calculate final Praxiom Age
 uint16_t WatchFaceDigital::GetCurrentPraxiomAgeTenths() {
-  return basePraxiomAgeTenths == 0 ? 530 : basePraxiomAgeTenths;
+  return basePraxiomAgeTenths == 0 ? DefaultPraxiomAgeTenths : basePraxiomAgeTenths;
 }
 
 void WatchFaceDigital::UpdatePraxiomAgeDisplay(uint16_t ageTenths) {
-  const uint16_t baseAge = basePraxiomAgeTenths == 0 ? 530 : basePraxiomAgeTenths;
+  const uint16_t baseAge = basePraxiomAgeTenths == 0 ? DefaultPraxiomAgeTenths : basePraxiomAgeTenths;
 
   char buffer[8];
   snprintf(buffer, sizeof(buffer), "%u.%u", ageTenths / 10, ageTenths % 10);
@@ -206,7 +210,7 @@ void WatchFaceDigital::Refresh() {
 
   const uint16_t storedPraxiomTenths = settingsController.GetPraxiomBioAge();
   if (storedPraxiomTenths != basePraxiomAgeTenths) {
-    basePraxiomAgeTenths = storedPraxiomTenths == 0 ? 530 : storedPraxiomTenths;
+    basePraxiomAgeTenths = storedPraxiomTenths == 0 ? DefaultPraxiomAgeTenths : storedPraxiomTenths;
     lastDisplayedPraxiomAgeTenths = 0xFFFF;
   }
 
