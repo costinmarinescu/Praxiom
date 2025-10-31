@@ -1,7 +1,6 @@
 #include "displayapp/screens/WatchFaceDigital.h"
 
 #include <lvgl/lvgl.h>
-#include <lvgl/lv_objx/lv_cont.h>
 #include <cstdio>
 #include "displayapp/screens/BatteryIcon.h"
 #include "displayapp/screens/BleIcon.h"
@@ -147,10 +146,7 @@ void WatchFaceDigital::UpdateBasePraxiomAge(uint16_t ageTenths) {
 
 // Calculate final Praxiom Age
 uint16_t WatchFaceDigital::GetCurrentPraxiomAgeTenths() {
-  return Pinetime::Praxiom::ComputeAdjustedBioAge(
-    basePraxiomAgeTenths,
-    heartRateController.HeartRate(),
-    motionController.NbSteps());
+  return basePraxiomAgeTenths == 0 ? 530 : basePraxiomAgeTenths;
 }
 
 void WatchFaceDigital::UpdatePraxiomAgeDisplay(uint16_t ageTenths) {
@@ -206,47 +202,3 @@ void WatchFaceDigital::Refresh() {
 
     // Update time
     lv_label_set_text_fmt(label_time, "%02d:%02d", hour, minute);
-
-    currentDate = std::chrono::time_point_cast<std::chrono::days>(currentDateTime.Get());
-    if (currentDate.IsUpdated()) {
-      uint16_t year = dateTimeController.Year();
-      uint8_t day = dateTimeController.Day();
-      lv_label_set_text_fmt(label_date,
-                            "%s %d %d",
-                            dateTimeController.DayOfWeekShortToString(),
-                            day,
-                            year);
-      lv_obj_realign(label_date);
-    }
-  }
-
-  heartbeat = heartRateController.HeartRate();
-  heartbeatRunning = heartRateController.State() != Controllers::HeartRateController::States::Stopped;
-  if (heartbeat.IsUpdated() || heartbeatRunning.IsUpdated()) {
-    if (heartbeatRunning.Get()) {
-      lv_label_set_text_fmt(heartbeatValue, "%d", heartbeat.Get());
-    } else {
-      lv_label_set_text_static(heartbeatValue, "");
-    }
-    lv_obj_realign(heartbeatValue);
-  }
-
-  stepCount = motionController.NbSteps();
-  if (stepCount.IsUpdated()) {
-    lv_label_set_text_fmt(stepValue, "%lu", stepCount.Get());
-    lv_obj_realign(stepValue);
-  }
-
-  const uint16_t storedPraxiomTenths = settingsController.GetPraxiomBioAge();
-  if (storedPraxiomTenths != basePraxiomAgeTenths) {
-    basePraxiomAgeTenths = storedPraxiomTenths == 0 ? 530 : storedPraxiomTenths;
-    lastDisplayedPraxiomAgeTenths = 0xFFFF;
-  }
-
-  lastSyncTime = settingsController.GetPraxiomLastSync();
-
-  const uint16_t currentPraxiomTenths = GetCurrentPraxiomAgeTenths();
-  if (currentPraxiomTenths != lastDisplayedPraxiomAgeTenths) {
-    UpdatePraxiomAgeDisplay(currentPraxiomTenths);
-  }
-}
