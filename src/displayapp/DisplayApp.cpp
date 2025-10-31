@@ -57,8 +57,10 @@
 
 #include <algorithm>
 
+using namespace Pinetime::Applications;
+
 namespace {
-  using DisplayMessages = Pinetime::Applications::Display::Messages;
+  using DisplayMessages = Display::Messages;
 
   inline bool in_isr() {
     return (SCB->ICSR & SCB_ICSR_VECTACTIVE_Msk) != 0;
@@ -70,7 +72,7 @@ namespace {
   }
 }
 
-using Messages = Pinetime::Applications::Display::Messages;
+using Messages = Display::Messages;
 
 DisplayApp::DisplayApp(Drivers::St7789& lcd,
                        const Drivers::Cst816S& touchPanel,
