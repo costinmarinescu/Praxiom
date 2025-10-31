@@ -57,12 +57,9 @@ namespace Pinetime {
         Utility::DirtyValue<uint8_t> heartbeat {};
         Utility::DirtyValue<bool> heartbeatRunning {};
         Utility::DirtyValue<bool> notificationState {};
-        Utility::DirtyValue<std::optional<Pinetime::Controllers::SimpleWeatherService::CurrentWeather>> currentWeather {};
-
         Utility::DirtyValue<std::chrono::time_point<std::chrono::system_clock, std::chrono::days>> currentDate;
 
         lv_obj_t* label_time;
-        lv_obj_t* label_time_ampm;
         lv_obj_t* label_date;
         lv_obj_t* labelPraxiomAge;          // "Praxiom Age" text label
         lv_obj_t* labelPraxiomAgeNumber;    // Praxiom Age number label
@@ -71,9 +68,6 @@ namespace Pinetime {
         lv_obj_t* stepIcon;
         lv_obj_t* stepValue;
         lv_obj_t* notificationIcon;
-        lv_obj_t* weatherIcon;
-        lv_obj_t* temperature;
-        lv_obj_t* label_bioage;  // NEW: Bio-Age label
 
         Controllers::DateTime& dateTimeController;
         Controllers::NotificationManager& notificationManager;
