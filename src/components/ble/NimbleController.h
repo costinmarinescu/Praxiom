@@ -56,6 +56,17 @@ namespace Pinetime {
                        MotionController& motionController,
                        FS& fs);
 
+      NimbleController(Pinetime::System::SystemTask& systemTask,
+                       Ble& bleController,
+                       DateTime& dateTimeController,
+                       NotificationManager& notificationManager,
+                       Battery& batteryController,
+                       Pinetime::Drivers::SpiNorFlash& spiNorFlash,
+                       HeartRateController& heartRateController,
+                       MotionController& motionController,
+                       FS& fs,
+                       Settings& settingsController);
+
       void Init();
       void StartAdvertising();
       int OnGAPEvent(ble_gap_event* event);
