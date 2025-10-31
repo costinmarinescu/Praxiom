@@ -79,7 +79,7 @@ namespace Pinetime {
       uint16_t bioAgeHandle = 0;
       uint16_t packageHandle = 0;
       bool packageNotifyEnabled = false;
-      TimerHandle_t periodicTimer = nullptr;
+      TimerHandle_t periodicTimer = 0;
     };
   }
 }
