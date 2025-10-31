@@ -58,7 +58,8 @@ void MeasureBatteryTimerCallback(TimerHandle_t xTimer) {
                      heartRateController,
                      motionController,
                      settingsController,
-                     fs) {
+                     fs,
+                     &settingsController) {
 }
 
 void SystemTask::Start() {
