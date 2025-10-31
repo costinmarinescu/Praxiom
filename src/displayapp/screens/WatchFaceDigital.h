@@ -66,7 +66,9 @@ namespace Pinetime {
         lv_obj_t* label_time_ampm = nullptr;
         lv_obj_t* label_date = nullptr;
         lv_obj_t* labelPraxiomAge = nullptr;          // "Praxiom Age" text label
-        lv_obj_t* labelPraxiomAgeNumber = nullptr;    // Praxiom Age number label
+        lv_obj_t* labelPraxiomAgeInteger = nullptr;
+        lv_obj_t* labelPraxiomAgeDot = nullptr;
+        lv_obj_t* labelPraxiomAgeFraction = nullptr;
         lv_obj_t* heartbeatIcon = nullptr;
         lv_obj_t* heartbeatValue = nullptr;
         lv_obj_t* stepIcon = nullptr;
@@ -119,4 +121,3 @@ namespace Pinetime {
       }
     };
   }
-}
