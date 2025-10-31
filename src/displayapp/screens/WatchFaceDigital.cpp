@@ -15,8 +15,6 @@
 #include "components/settings/Settings.h"
 #include "utility/PraxiomHealth.h"
 
-#include <cmath>
-
 using namespace Pinetime::Applications::Screens;
 
 WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
@@ -62,11 +60,11 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
 
   // Create Praxiom Age number - BOLD large digits - WHITE (neutral color)
   labelPraxiomAgeNumber = lv_label_create(lv_scr_act(), nullptr);
-  float initialPraxiomAge = static_cast<float>(basePraxiomAgeTenths == 0 ? 530 : basePraxiomAgeTenths) / 10.0f;
-  lv_label_set_text_fmt(labelPraxiomAgeNumber, "%.1f", initialPraxiomAge);
+  lv_label_set_text_static(labelPraxiomAgeNumber, "");
   lv_obj_set_style_local_text_font(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_extrabold_compressed);  // BOLD font
   lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));  // Start with white
   lv_obj_align(labelPraxiomAgeNumber, lv_scr_act(), LV_ALIGN_CENTER, 0, -10);
+  UpdatePraxiomAgeDisplay(GetCurrentPraxiomAgeTenths());
 
   // Time label - BLACK
   label_time = lv_label_create(lv_scr_act(), nullptr);
@@ -120,35 +118,50 @@ WatchFaceDigital::~WatchFaceDigital() {
 
 // Update base Praxiom Age from phone app (called via BLE)
 void WatchFaceDigital::UpdateBasePraxiomAge(uint16_t ageTenths) {
+  if (ageTenths == 0) {
+    ageTenths = 530;
+  }
   basePraxiomAgeTenths = ageTenths;
   auto now = std::chrono::duration_cast<std::chrono::seconds>(dateTimeController.CurrentDateTime().time_since_epoch());
   lastSyncTime = static_cast<uint32_t>(now.count());
+  lastDisplayedPraxiomAgeTenths = 0xFFFF;
+  UpdatePraxiomAgeDisplay(GetCurrentPraxiomAgeTenths());
 }
 
 // Calculate final Praxiom Age
-float WatchFaceDigital::GetCurrentPraxiomAge() {
-  const uint16_t adjustedTenths = Pinetime::Praxiom::ComputeAdjustedBioAge(
+uint16_t WatchFaceDigital::GetCurrentPraxiomAgeTenths() {
+  return Pinetime::Praxiom::ComputeAdjustedBioAge(
     basePraxiomAgeTenths,
     heartRateController.HeartRate(),
     motionController.NbSteps());
+}
 
-  return static_cast<float>(adjustedTenths) / 10.0f;
+void WatchFaceDigital::UpdatePraxiomAgeDisplay(uint16_t ageTenths) {
+  char buffer[8];
+  const uint16_t baseAge = basePraxiomAgeTenths == 0 ? 530 : basePraxiomAgeTenths;
+  snprintf(buffer, sizeof(buffer), "%u.%u", ageTenths / 10, ageTenths % 10);
+
+  lv_label_set_text(labelPraxiomAgeNumber, buffer);
+  lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, GetPraxiomAgeColor(ageTenths, baseAge));
+  lv_obj_realign(labelPraxiomAgeNumber);
+  lastDisplayedPraxiomAgeTenths = ageTenths;
 }
 
 // Get color based on Praxiom Age difference from base age
-lv_color_t WatchFaceDigital::GetPraxiomAgeColor(float currentAge, float baseAge) {
-  float difference = currentAge - baseAge;
+lv_color_t WatchFaceDigital::GetPraxiomAgeColor(uint16_t currentAgeTenths, uint16_t baseAgeTenths) {
+  const int16_t differenceTenths = static_cast<int16_t>(currentAgeTenths) - static_cast<int16_t>(baseAgeTenths);
 
-  if (difference <= -2.0f) {
+  if (differenceTenths <= -20) {
     // More than 2 years younger - GREEN (excellent health)
     return lv_color_hex(0x00FF00);
-  } else if (difference >= 2.0f) {
+  }
+  if (differenceTenths >= 20) {
     // More than 2 years older - RED (poor health)
     return lv_color_hex(0xFF0000);
-  } else {
-    // Within ±2 years - WHITE (neutral/good health)
-    return lv_color_hex(0xFFFFFF);
   }
+
+  // Within ±2 years - WHITE (neutral/good health)
+  return lv_color_hex(0xFFFFFF);
 }
 
 void WatchFaceDigital::Refresh() {
@@ -197,29 +210,16 @@ void WatchFaceDigital::Refresh() {
     lv_obj_realign(stepValue);
   }
 
-  uint16_t storedPraxiomTenths = settingsController.GetPraxiomBioAge();
+  const uint16_t storedPraxiomTenths = settingsController.GetPraxiomBioAge();
   if (storedPraxiomTenths != basePraxiomAgeTenths) {
-    basePraxiomAgeTenths = storedPraxiomTenths;
+    basePraxiomAgeTenths = storedPraxiomTenths == 0 ? 530 : storedPraxiomTenths;
+    lastDisplayedPraxiomAgeTenths = 0xFFFF;
   }
 
   lastSyncTime = settingsController.GetPraxiomLastSync();
-  
-  // Update Praxiom Age every minute with dynamic color
-  static uint8_t lastMinute = 0;
-  uint8_t currentMinute = dateTimeController.Minutes();
-  
-  if (currentMinute != lastMinute) {
-    float praxiomAge = GetCurrentPraxiomAge();
-    float baseAge = static_cast<float>(basePraxiomAgeTenths == 0 ? 530 : basePraxiomAgeTenths) / 10.0f;
 
-    lv_label_set_text_fmt(labelPraxiomAgeNumber, "%.1f", praxiomAge);
-
-    lv_color_t ageColor = GetPraxiomAgeColor(praxiomAge, baseAge);
-    lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, ageColor);
-    
-    lv_obj_realign(labelPraxiomAgeNumber);
-    lastMinute = currentMinute;
-    
-    // TODO: Send updated Praxiom Age back to phone via BLE every 10 minutes
+  const uint16_t currentPraxiomTenths = GetCurrentPraxiomAgeTenths();
+  if (currentPraxiomTenths != lastDisplayedPraxiomAgeTenths) {
+    UpdatePraxiomAgeDisplay(currentPraxiomTenths);
   }
 }
