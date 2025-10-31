@@ -74,14 +74,14 @@ namespace Pinetime {
         lv_obj_t* weatherIcon;
         lv_obj_t* temperature;
         lv_obj_t* label_bioage;  // NEW: Bio-Age label
-
+        
         Controllers::DateTime& dateTimeController;
         Controllers::NotificationManager& notificationManager;
         Controllers::Settings& settingsController;
         Controllers::HeartRateController& heartRateController;
         Controllers::MotionController& motionController;
         Controllers::SimpleWeatherService& weatherService;
-
+        
         lv_task_t* taskRefresh;
         Widgets::StatusIcons statusIcons;
         
