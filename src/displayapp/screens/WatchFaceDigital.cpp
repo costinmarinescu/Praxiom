@@ -42,7 +42,6 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
   lv_obj_set_size(background_gradient, 240, 240);
   lv_obj_set_pos(background_gradient, 0, 0);
   lv_obj_set_style_local_radius(background_gradient, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, 0);
-  // Praxiom brand colors: Orange/Amber (#CC6600) to Teal (#008B8B)
   lv_obj_set_style_local_bg_color(background_gradient, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xCC6600));
   lv_obj_set_style_local_bg_grad_color(background_gradient, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x008B8B));
   lv_obj_set_style_local_bg_grad_dir(background_gradient, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, LV_GRAD_DIR_VER);
@@ -146,46 +145,17 @@ void WatchFaceDigital::UpdatePraxiomAgeDisplay(uint16_t ageTenths) {
   lastDisplayedPraxiomAgeTenths = ageTenths;
 }
 
-// Calculate final Praxiom Age
-uint16_t WatchFaceDigital::GetCurrentPraxiomAgeTenths() {
-  return basePraxiomAgeTenths == 0 ? 530 : basePraxiomAgeTenths;
-}
-
-void WatchFaceDigital::UpdatePraxiomAgeDisplay(uint16_t ageTenths) {
-  char integerPart[6];
-  char fractionalPart[2];
-  const uint16_t baseAge = basePraxiomAgeTenths == 0 ? 530 : basePraxiomAgeTenths;
-
-  snprintf(integerPart, sizeof(integerPart), "%u", ageTenths / 10);
-  fractionalPart[0] = static_cast<char>('0' + (ageTenths % 10));
-  fractionalPart[1] = '\0';
-
-  lv_label_set_text(labelPraxiomAgeInteger, integerPart);
-  lv_label_set_text(labelPraxiomAgeFraction, fractionalPart);
-
-  const lv_color_t color = GetPraxiomAgeColor(ageTenths, baseAge);
-  lv_obj_set_style_local_text_color(labelPraxiomAgeInteger, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, color);
-  lv_obj_set_style_local_text_color(labelPraxiomAgeFraction, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, color);
-  lv_obj_set_style_local_text_color(labelPraxiomAgeDot, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, color);
-
-  lv_obj_align(praxiomAgeContainer, lv_scr_act(), LV_ALIGN_CENTER, 0, -10);
-  lastDisplayedPraxiomAgeTenths = ageTenths;
-}
-
 // Get color based on Praxiom Age difference from base age
 lv_color_t WatchFaceDigital::GetPraxiomAgeColor(uint16_t currentAgeTenths, uint16_t baseAgeTenths) {
   const int16_t differenceTenths = static_cast<int16_t>(currentAgeTenths) - static_cast<int16_t>(baseAgeTenths);
 
   if (differenceTenths <= -20) {
-    // More than 2 years younger - GREEN (excellent health)
     return lv_color_hex(0x00FF00);
   }
   if (differenceTenths >= 20) {
-    // More than 2 years older - RED (poor health)
     return lv_color_hex(0xFF0000);
   }
 
-  // Within ±2 years - WHITE (neutral/good health)
   return lv_color_hex(0xFFFFFF);
 }
 
@@ -202,5 +172,48 @@ void WatchFaceDigital::Refresh() {
     uint8_t hour = dateTimeController.Hours();
     uint8_t minute = dateTimeController.Minutes();
 
-    // Update time
     lv_label_set_text_fmt(label_time, "%02d:%02d", hour, minute);
+
+    currentDate = std::chrono::time_point_cast<std::chrono::days>(currentDateTime.Get());
+    if (currentDate.IsUpdated()) {
+      uint16_t year = dateTimeController.Year();
+      uint8_t day = dateTimeController.Day();
+      lv_label_set_text_fmt(label_date,
+                            "%s %d %d",
+                            dateTimeController.DayOfWeekShortToString(),
+                            day,
+                            year);
+      lv_obj_realign(label_date);
+    }
+  }
+
+  heartbeat = heartRateController.HeartRate();
+  heartbeatRunning = heartRateController.State() != Controllers::HeartRateController::States::Stopped;
+  if (heartbeat.IsUpdated() || heartbeatRunning.IsUpdated()) {
+    if (heartbeatRunning.Get()) {
+      lv_label_set_text_fmt(heartbeatValue, "%d", heartbeat.Get());
+    } else {
+      lv_label_set_text_static(heartbeatValue, "");
+    }
+    lv_obj_realign(heartbeatValue);
+  }
+
+  stepCount = motionController.NbSteps();
+  if (stepCount.IsUpdated()) {
+    lv_label_set_text_fmt(stepValue, "%lu", stepCount.Get());
+    lv_obj_realign(stepValue);
+  }
+
+  const uint16_t storedPraxiomTenths = settingsController.GetPraxiomBioAge();
+  if (storedPraxiomTenths != basePraxiomAgeTenths) {
+    basePraxiomAgeTenths = storedPraxiomTenths == 0 ? 530 : storedPraxiomTenths;
+    lastDisplayedPraxiomAgeTenths = 0xFFFF;
+  }
+
+  lastSyncTime = settingsController.GetPraxiomLastSync();
+
+  const uint16_t currentPraxiomTenths = GetCurrentPraxiomAgeTenths();
+  if (currentPraxiomTenths != lastDisplayedPraxiomAgeTenths) {
+    UpdatePraxiomAgeDisplay(currentPraxiomTenths);
+  }
+}
