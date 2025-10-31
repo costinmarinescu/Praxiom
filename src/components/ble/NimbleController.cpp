@@ -30,9 +30,7 @@ NimbleController::NimbleController(Pinetime::System::SystemTask& systemTask,
                                    Pinetime::Drivers::SpiNorFlash& spiNorFlash,
                                    HeartRateController& heartRateController,
                                    MotionController& motionController,
-                                   Settings& settingsController,
-                                   FS& fs,
-                                   Settings* settingsController)
+                                   FS& fs)
   : systemTask {systemTask},
     bleController {bleController},
     dateTimeController {dateTimeController},
@@ -53,9 +51,28 @@ NimbleController::NimbleController(Pinetime::System::SystemTask& systemTask,
     praxiomService {*this, dateTimeController, heartRateController, motionController},
     fsService {systemTask, fs},
     serviceDiscovery({&currentTimeClient, &alertNotificationClient}) {
-  if (settingsController != nullptr) {
-    PraxiomService::BindSettings(*settingsController);
-  }
+}
+
+NimbleController::NimbleController(Pinetime::System::SystemTask& systemTask,
+                                   Ble& bleController,
+                                   DateTime& dateTimeController,
+                                   NotificationManager& notificationManager,
+                                   Battery& batteryController,
+                                   Pinetime::Drivers::SpiNorFlash& spiNorFlash,
+                                   HeartRateController& heartRateController,
+                                   MotionController& motionController,
+                                   FS& fs,
+                                   Settings& settingsController)
+  : NimbleController(systemTask,
+                     bleController,
+                     dateTimeController,
+                     notificationManager,
+                     batteryController,
+                     spiNorFlash,
+                     heartRateController,
+                     motionController,
+                     fs) {
+  PraxiomService::BindSettings(settingsController);
 }
 
 void nimble_on_reset(int reason) {
