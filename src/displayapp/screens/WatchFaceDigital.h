@@ -111,4 +111,3 @@ namespace Pinetime {
         return true;
       }
     };
-  }
