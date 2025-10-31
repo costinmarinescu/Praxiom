@@ -223,4 +223,3 @@ void WatchFaceDigital::Refresh() {
   if (currentPraxiomTenths != lastDisplayedPraxiomAgeTenths) {
     UpdatePraxiomAgeDisplay(currentPraxiomTenths);
   }
-}
