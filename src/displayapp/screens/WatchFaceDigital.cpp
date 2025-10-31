@@ -58,18 +58,11 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
   lv_obj_set_style_local_text_color(labelPraxiomAge, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x000000));
   lv_obj_align(labelPraxiomAge, lv_scr_act(), LV_ALIGN_CENTER, 0, -80);
 
-  labelPraxiomAgeInteger = lv_label_create(lv_scr_act(), nullptr);
-  lv_obj_set_style_local_text_font(labelPraxiomAgeInteger, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_extrabold_compressed);
-  lv_obj_set_style_local_text_color(labelPraxiomAgeInteger, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));
-
-  labelPraxiomAgeDot = lv_label_create(lv_scr_act(), nullptr);
-  lv_obj_set_style_local_text_font(labelPraxiomAgeDot, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &lv_font_montserrat_28);
-  lv_obj_set_style_local_text_color(labelPraxiomAgeDot, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));
-  lv_label_set_text_static(labelPraxiomAgeDot, ".");
-
-  labelPraxiomAgeFraction = lv_label_create(lv_scr_act(), nullptr);
-  lv_obj_set_style_local_text_font(labelPraxiomAgeFraction, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_extrabold_compressed);
-  lv_obj_set_style_local_text_color(labelPraxiomAgeFraction, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));
+  labelPraxiomAgeNumber = lv_label_create(lv_scr_act(), nullptr);
+  lv_obj_set_style_local_text_font(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_extrabold_compressed);
+  lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));
+  lv_label_set_text_static(labelPraxiomAgeNumber, "0");
+  lv_obj_align(labelPraxiomAgeNumber, lv_scr_act(), LV_ALIGN_CENTER, 0, -10);
 
   UpdatePraxiomAgeDisplay(GetCurrentPraxiomAgeTenths());
 
@@ -138,6 +131,17 @@ void WatchFaceDigital::UpdateBasePraxiomAge(uint16_t ageTenths) {
 // Calculate final Praxiom Age
 uint16_t WatchFaceDigital::GetCurrentPraxiomAgeTenths() {
   return basePraxiomAgeTenths == 0 ? 530 : basePraxiomAgeTenths;
+}
+
+void WatchFaceDigital::UpdatePraxiomAgeDisplay(uint16_t ageTenths) {
+  const uint16_t baseAge = basePraxiomAgeTenths == 0 ? 530 : basePraxiomAgeTenths;
+
+  lv_label_set_text_fmt(labelPraxiomAgeNumber, "%u", ageTenths / 10);
+
+  const lv_color_t color = GetPraxiomAgeColor(ageTenths, baseAge);
+  lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, color);
+  lv_obj_align(labelPraxiomAgeNumber, lv_scr_act(), LV_ALIGN_CENTER, 0, -10);
+  lastDisplayedPraxiomAgeTenths = ageTenths;
 }
 
 void WatchFaceDigital::UpdatePraxiomAgeDisplay(uint16_t ageTenths) {
