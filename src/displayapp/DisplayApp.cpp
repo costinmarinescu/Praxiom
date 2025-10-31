@@ -57,7 +57,6 @@
 
 #include <algorithm>
 
-using namespace Pinetime::Applications;
 using namespace Pinetime::Applications::Display;
 
 namespace {
