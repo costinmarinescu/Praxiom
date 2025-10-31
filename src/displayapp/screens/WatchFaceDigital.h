@@ -3,6 +3,7 @@
 #include <lvgl/src/lv_core/lv_obj.h>
 #include <chrono>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include "displayapp/screens/Screen.h"
 #include "components/datetime/DateTimeController.h"
@@ -43,9 +44,9 @@ namespace Pinetime {
 
         // Called by BLE service to update base Praxiom Age from phone
         void UpdateBasePraxiomAge(uint16_t ageTenths);
-        
-        // Get current calculated Praxiom Age (for sending back to phone)
-        float GetCurrentPraxiomAge();
+
+        // Get current calculated Praxiom Age in tenths of a year
+        uint16_t GetCurrentPraxiomAgeTenths();
 
       private:
         uint8_t displayedHour = -1;
@@ -86,10 +87,12 @@ namespace Pinetime {
         
         // Praxiom Age calculation variables
         uint16_t basePraxiomAgeTenths;  // Base age from phone app biomarker calculation (tenths of a year)
-        uint32_t lastSyncTime;  // Last sync timestamp (seconds since epoch)
+        uint32_t lastSyncTime;          // Last sync timestamp (seconds since epoch)
+        uint16_t lastDisplayedPraxiomAgeTenths = 0xFFFF;
         
         // Helper functions
-        lv_color_t GetPraxiomAgeColor(float currentAge, float baseAge);
+        void UpdatePraxiomAgeDisplay(uint16_t ageTenths);
+        lv_color_t GetPraxiomAgeColor(uint16_t currentAgeTenths, uint16_t baseAgeTenths);
       };
     }
 
