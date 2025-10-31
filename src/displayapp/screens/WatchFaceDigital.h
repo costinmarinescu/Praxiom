@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <optional>
 #include "displayapp/screens/Screen.h"
 #include "components/datetime/DateTimeController.h"
 #include "components/ble/SimpleWeatherService.h"
@@ -57,17 +58,23 @@ namespace Pinetime {
         Utility::DirtyValue<uint8_t> heartbeat {};
         Utility::DirtyValue<bool> heartbeatRunning {};
         Utility::DirtyValue<bool> notificationState {};
+        Utility::DirtyValue<std::optional<Pinetime::Controllers::SimpleWeatherService::CurrentWeather>> currentWeather {};
+
         Utility::DirtyValue<std::chrono::time_point<std::chrono::system_clock, std::chrono::days>> currentDate;
 
-        lv_obj_t* label_time;
-        lv_obj_t* label_date;
-        lv_obj_t* labelPraxiomAge;          // "Praxiom Age" text label
-        lv_obj_t* labelPraxiomAgeNumber;    // Praxiom Age number label
-        lv_obj_t* heartbeatIcon;
-        lv_obj_t* heartbeatValue;
-        lv_obj_t* stepIcon;
-        lv_obj_t* stepValue;
-        lv_obj_t* notificationIcon;
+        lv_obj_t* label_time = nullptr;
+        lv_obj_t* label_time_ampm = nullptr;
+        lv_obj_t* label_date = nullptr;
+        lv_obj_t* labelPraxiomAge = nullptr;          // "Praxiom Age" text label
+        lv_obj_t* labelPraxiomAgeNumber = nullptr;    // Praxiom Age number label
+        lv_obj_t* heartbeatIcon = nullptr;
+        lv_obj_t* heartbeatValue = nullptr;
+        lv_obj_t* stepIcon = nullptr;
+        lv_obj_t* stepValue = nullptr;
+        lv_obj_t* notificationIcon = nullptr;
+        lv_obj_t* weatherIcon = nullptr;
+        lv_obj_t* temperature = nullptr;
+        lv_obj_t* label_bioage = nullptr;  // NEW: Bio-Age label
 
         Controllers::DateTime& dateTimeController;
         Controllers::NotificationManager& notificationManager;
@@ -76,9 +83,9 @@ namespace Pinetime {
         Controllers::MotionController& motionController;
         Controllers::SimpleWeatherService& weatherService;
 
-        lv_task_t* taskRefresh;
+        lv_task_t* taskRefresh = nullptr;
         Widgets::StatusIcons statusIcons;
-        
+
         // Praxiom Age calculation variables
         uint16_t basePraxiomAgeTenths;  // Base age from phone app biomarker calculation (tenths of a year)
         uint32_t lastSyncTime;          // Last sync timestamp (seconds since epoch)
@@ -111,3 +118,5 @@ namespace Pinetime {
         return true;
       }
     };
+  }
+}
