@@ -74,14 +74,14 @@ namespace Pinetime {
         lv_obj_t* weatherIcon;
         lv_obj_t* temperature;
         lv_obj_t* label_bioage;  // NEW: Bio-Age label
-        
+
         Controllers::DateTime& dateTimeController;
         Controllers::NotificationManager& notificationManager;
         Controllers::Settings& settingsController;
         Controllers::HeartRateController& heartRateController;
         Controllers::MotionController& motionController;
         Controllers::SimpleWeatherService& weatherService;
-        
+
         lv_task_t* taskRefresh;
         Widgets::StatusIcons statusIcons;
         
@@ -89,7 +89,7 @@ namespace Pinetime {
         uint16_t basePraxiomAgeTenths;  // Base age from phone app biomarker calculation (tenths of a year)
         uint32_t lastSyncTime;          // Last sync timestamp (seconds since epoch)
         uint16_t lastDisplayedPraxiomAgeTenths = 0xFFFF;
-        
+
         // Helper functions
         void UpdatePraxiomAgeDisplay(uint16_t ageTenths);
         lv_color_t GetPraxiomAgeColor(uint16_t currentAgeTenths, uint16_t baseAgeTenths);
@@ -118,4 +118,3 @@ namespace Pinetime {
       }
     };
   }
-}
