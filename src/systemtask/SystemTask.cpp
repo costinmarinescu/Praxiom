@@ -81,8 +81,8 @@ SystemTask::SystemTask(Drivers::SpiMaster& spi,
                      spiNorFlash,
                      heartRateController,
                      motionController,
-                     fs,
-                     settingsController) {
+                     fs) {
+  Pinetime::Controllers::PraxiomService::BindSettings(settingsController);
 }
 
 void SystemTask::Start() {
