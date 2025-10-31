@@ -203,23 +203,3 @@ void WatchFaceDigital::Refresh() {
       lv_label_set_text_static(heartbeatValue, "");
     }
     lv_obj_realign(heartbeatValue);
-  }
-
-  stepCount = motionController.NbSteps();
-  if (stepCount.IsUpdated()) {
-    lv_label_set_text_fmt(stepValue, "%lu", stepCount.Get());
-    lv_obj_realign(stepValue);
-  }
-
-  const uint16_t storedPraxiomTenths = settingsController.GetPraxiomBioAge();
-  if (storedPraxiomTenths != basePraxiomAgeTenths) {
-    basePraxiomAgeTenths = storedPraxiomTenths == 0 ? DefaultPraxiomAgeTenths : storedPraxiomTenths;
-    lastDisplayedPraxiomAgeTenths = 0xFFFF;
-  }
-
-  lastSyncTime = settingsController.GetPraxiomLastSync();
-
-  const uint16_t currentPraxiomTenths = GetCurrentPraxiomAgeTenths();
-  if (currentPraxiomTenths != lastDisplayedPraxiomAgeTenths) {
-    UpdatePraxiomAgeDisplay(currentPraxiomTenths);
-  }
