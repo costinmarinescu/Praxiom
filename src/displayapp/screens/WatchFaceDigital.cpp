@@ -1,6 +1,7 @@
 #include "displayapp/screens/WatchFaceDigital.h"
 
 #include <lvgl/lvgl.h>
+#include <lvgl/lv_objx/lv_cont.h>
 #include <cstdio>
 #include "displayapp/screens/BatteryIcon.h"
 #include "displayapp/screens/BleIcon.h"
@@ -58,12 +59,28 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
   lv_obj_set_style_local_text_color(labelPraxiomAge, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x000000));
   lv_obj_align(labelPraxiomAge, lv_scr_act(), LV_ALIGN_CENTER, 0, -80);
 
-  // Create Praxiom Age number - BOLD large digits - WHITE (neutral color)
-  labelPraxiomAgeNumber = lv_label_create(lv_scr_act(), nullptr);
-  lv_label_set_text_static(labelPraxiomAgeNumber, "");
-  lv_obj_set_style_local_text_font(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_extrabold_compressed);  // BOLD font
-  lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));  // Start with white
-  lv_obj_align(labelPraxiomAgeNumber, lv_scr_act(), LV_ALIGN_CENTER, 0, -10);
+  // Container for Praxiom Age numeric display so the value stays centred as digits change
+  praxiomAgeContainer = lv_cont_create(lv_scr_act(), nullptr);
+  lv_obj_set_style_local_bg_opa(praxiomAgeContainer, LV_CONT_PART_MAIN, LV_STATE_DEFAULT, LV_OPA_TRANSP);
+  lv_obj_set_style_local_border_width(praxiomAgeContainer, LV_CONT_PART_MAIN, LV_STATE_DEFAULT, 0);
+  lv_obj_set_style_local_pad_all(praxiomAgeContainer, LV_CONT_PART_MAIN, LV_STATE_DEFAULT, 0);
+  lv_obj_set_style_local_pad_inner(praxiomAgeContainer, LV_CONT_PART_MAIN, LV_STATE_DEFAULT, 0);
+  lv_cont_set_fit2(praxiomAgeContainer, LV_FIT_TIGHT, LV_FIT_TIGHT);
+  lv_cont_set_layout(praxiomAgeContainer, LV_LAYOUT_ROW_MID);
+  lv_obj_align(praxiomAgeContainer, lv_scr_act(), LV_ALIGN_CENTER, 0, -10);
+
+  labelPraxiomAgeInteger = lv_label_create(praxiomAgeContainer, nullptr);
+  lv_label_set_text_static(labelPraxiomAgeInteger, "0");
+  lv_obj_set_style_local_text_font(labelPraxiomAgeInteger, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_extrabold_compressed);
+
+  labelPraxiomAgeDot = lv_label_create(praxiomAgeContainer, nullptr);
+  lv_label_set_text_static(labelPraxiomAgeDot, ".");
+  lv_obj_set_style_local_text_font(labelPraxiomAgeDot, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_bold_20);
+
+  labelPraxiomAgeFraction = lv_label_create(praxiomAgeContainer, nullptr);
+  lv_label_set_text_static(labelPraxiomAgeFraction, "0");
+  lv_obj_set_style_local_text_font(labelPraxiomAgeFraction, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_extrabold_compressed);
+
   UpdatePraxiomAgeDisplay(GetCurrentPraxiomAgeTenths());
 
   // Time label - BLACK
@@ -137,13 +154,23 @@ uint16_t WatchFaceDigital::GetCurrentPraxiomAgeTenths() {
 }
 
 void WatchFaceDigital::UpdatePraxiomAgeDisplay(uint16_t ageTenths) {
-  char buffer[8];
+  char integerPart[6];
+  char fractionalPart[2];
   const uint16_t baseAge = basePraxiomAgeTenths == 0 ? 530 : basePraxiomAgeTenths;
-  snprintf(buffer, sizeof(buffer), "%u.%u", ageTenths / 10, ageTenths % 10);
 
-  lv_label_set_text(labelPraxiomAgeNumber, buffer);
-  lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, GetPraxiomAgeColor(ageTenths, baseAge));
-  lv_obj_realign(labelPraxiomAgeNumber);
+  snprintf(integerPart, sizeof(integerPart), "%u", ageTenths / 10);
+  fractionalPart[0] = static_cast<char>('0' + (ageTenths % 10));
+  fractionalPart[1] = '\0';
+
+  lv_label_set_text(labelPraxiomAgeInteger, integerPart);
+  lv_label_set_text(labelPraxiomAgeFraction, fractionalPart);
+
+  const lv_color_t color = GetPraxiomAgeColor(ageTenths, baseAge);
+  lv_obj_set_style_local_text_color(labelPraxiomAgeInteger, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, color);
+  lv_obj_set_style_local_text_color(labelPraxiomAgeFraction, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, color);
+  lv_obj_set_style_local_text_color(labelPraxiomAgeDot, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, color);
+
+  lv_obj_align(praxiomAgeContainer, lv_scr_act(), LV_ALIGN_CENTER, 0, -10);
   lastDisplayedPraxiomAgeTenths = ageTenths;
 }
 
