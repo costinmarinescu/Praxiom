@@ -31,7 +31,8 @@ NimbleController::NimbleController(Pinetime::System::SystemTask& systemTask,
                                    HeartRateController& heartRateController,
                                    MotionController& motionController,
                                    Settings& settingsController,
-                                   FS& fs)
+                                   FS& fs,
+                                   Settings* settingsController)
   : systemTask {systemTask},
     bleController {bleController},
     dateTimeController {dateTimeController},
@@ -52,27 +53,9 @@ NimbleController::NimbleController(Pinetime::System::SystemTask& systemTask,
     praxiomService {*this, dateTimeController, heartRateController, motionController},
     fsService {systemTask, fs},
     serviceDiscovery({&currentTimeClient, &alertNotificationClient}) {
-}
-NimbleController::NimbleController(Pinetime::System::SystemTask& systemTask,
-                                   Ble& bleController,
-                                   DateTime& dateTimeController,
-                                   NotificationManager& notificationManager,
-                                   Battery& batteryController,
-                                   Pinetime::Drivers::SpiNorFlash& spiNorFlash,
-                                   HeartRateController& heartRateController,
-                                   MotionController& motionController,
-                                   Settings& settingsController,
-                                   FS& fs)
-  : NimbleController(systemTask,
-                     bleController,
-                     dateTimeController,
-                     notificationManager,
-                     batteryController,
-                     spiNorFlash,
-                     heartRateController,
-                     motionController,
-                     fs) {
-  PraxiomService::BindSettings(settingsController);
+  if (settingsController != nullptr) {
+    PraxiomService::BindSettings(*settingsController);
+  }
 }
 
 void nimble_on_reset(int reason) {
