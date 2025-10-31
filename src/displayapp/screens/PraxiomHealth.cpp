@@ -2,7 +2,6 @@
 
 #include <cstdio>
 #include <chrono>
-#include <sstream>
 
 using namespace Pinetime::Applications::Screens;
 
@@ -77,16 +76,19 @@ std::string PraxiomHealth::BuildLastSyncLabel(uint32_t lastSyncTimestamp) const 
     return "Last Sync: <1 min ago";
   }
 
-  std::ostringstream builder;
-  builder << "Last Sync: ";
-
+  char buffer[32];
+  int written = 0;
   if (diff < 3600) {
-    builder << static_cast<long long>(diff / 60) << " min ago";
+    written = std::snprintf(buffer, sizeof(buffer), "Last Sync: %lld min ago", static_cast<long long>(diff / 60));
   } else if (diff < 86400) {
-    builder << static_cast<long long>(diff / 3600) << " h ago";
+    written = std::snprintf(buffer, sizeof(buffer), "Last Sync: %lld h ago", static_cast<long long>(diff / 3600));
   } else {
-    builder << static_cast<long long>(diff / 86400) << " d ago";
+    written = std::snprintf(buffer, sizeof(buffer), "Last Sync: %lld d ago", static_cast<long long>(diff / 86400));
   }
 
-  return builder.str();
+  if (written < 0) {
+    return "Last Sync: --";
+  }
+
+  return std::string(buffer);
 }
