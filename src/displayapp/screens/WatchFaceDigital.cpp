@@ -58,11 +58,19 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
   lv_obj_set_style_local_text_color(labelPraxiomAge, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x000000));
   lv_obj_align(labelPraxiomAge, lv_scr_act(), LV_ALIGN_CENTER, 0, -80);
 
-  labelPraxiomAgeNumber = lv_label_create(lv_scr_act(), nullptr);
-  lv_label_set_text_static(labelPraxiomAgeNumber, "0.0");
-  lv_obj_set_style_local_text_font(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_extrabold_compressed);
-  lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));
-  lv_obj_align(labelPraxiomAgeNumber, lv_scr_act(), LV_ALIGN_CENTER, 0, -10);
+  labelPraxiomAgeInteger = lv_label_create(lv_scr_act(), nullptr);
+  lv_obj_set_style_local_text_font(labelPraxiomAgeInteger, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_extrabold_compressed);
+  lv_obj_set_style_local_text_color(labelPraxiomAgeInteger, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));
+
+  labelPraxiomAgeDot = lv_label_create(lv_scr_act(), nullptr);
+  lv_obj_set_style_local_text_font(labelPraxiomAgeDot, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &lv_font_montserrat_28);
+  lv_obj_set_style_local_text_color(labelPraxiomAgeDot, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));
+  lv_label_set_text_static(labelPraxiomAgeDot, ".");
+
+  labelPraxiomAgeFraction = lv_label_create(lv_scr_act(), nullptr);
+  lv_obj_set_style_local_text_font(labelPraxiomAgeFraction, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_extrabold_compressed);
+  lv_obj_set_style_local_text_color(labelPraxiomAgeFraction, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));
+
   UpdatePraxiomAgeDisplay(GetCurrentPraxiomAgeTenths());
 
   // Time label - BLACK
@@ -135,14 +143,27 @@ uint16_t WatchFaceDigital::GetCurrentPraxiomAgeTenths() {
 void WatchFaceDigital::UpdatePraxiomAgeDisplay(uint16_t ageTenths) {
   const uint16_t baseAge = basePraxiomAgeTenths == 0 ? 530 : basePraxiomAgeTenths;
 
-  char buffer[8];
-  snprintf(buffer, sizeof(buffer), "%u.%u", ageTenths / 10, ageTenths % 10);
+  char integerPart[6];
+  char fractionalPart[2];
+  snprintf(integerPart, sizeof(integerPart), "%u", ageTenths / 10);
+  snprintf(fractionalPart, sizeof(fractionalPart), "%u", ageTenths % 10);
 
-  lv_label_set_text(labelPraxiomAgeNumber, buffer);
+  lv_label_set_text(labelPraxiomAgeInteger, integerPart);
+  lv_label_set_text(labelPraxiomAgeFraction, fractionalPart);
 
   const lv_color_t color = GetPraxiomAgeColor(ageTenths, baseAge);
-  lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, color);
-  lv_obj_align(labelPraxiomAgeNumber, lv_scr_act(), LV_ALIGN_CENTER, 0, -10);
+  lv_obj_set_style_local_text_color(labelPraxiomAgeInteger, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, color);
+  lv_obj_set_style_local_text_color(labelPraxiomAgeDot, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, color);
+  lv_obj_set_style_local_text_color(labelPraxiomAgeFraction, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, color);
+
+  const lv_coord_t integerWidth = lv_obj_get_width(labelPraxiomAgeInteger);
+  const lv_coord_t dotWidth = lv_obj_get_width(labelPraxiomAgeDot);
+  const lv_coord_t fractionWidth = lv_obj_get_width(labelPraxiomAgeFraction);
+  const lv_coord_t totalWidth = integerWidth + dotWidth + fractionWidth;
+
+  lv_obj_align(labelPraxiomAgeInteger, lv_scr_act(), LV_ALIGN_CENTER, -totalWidth / 2 + integerWidth / 2, -10);
+  lv_obj_align(labelPraxiomAgeDot, labelPraxiomAgeInteger, LV_ALIGN_OUT_RIGHT_MID, 0, 0);
+  lv_obj_align(labelPraxiomAgeFraction, labelPraxiomAgeDot, LV_ALIGN_OUT_RIGHT_MID, 0, 0);
   lastDisplayedPraxiomAgeTenths = ageTenths;
 }
 
