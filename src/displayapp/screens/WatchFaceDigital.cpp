@@ -17,10 +17,6 @@
 
 using namespace Pinetime::Applications::Screens;
 
-namespace {
-  constexpr uint16_t DefaultPraxiomAgeTenths = 530;  // 53.0 years shown when no data pushed yet
-}
-
 WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
                                    const Controllers::Battery& batteryController,
                                    const Controllers::Ble& bleController,
@@ -46,6 +42,7 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
   lv_obj_set_size(background_gradient, 240, 240);
   lv_obj_set_pos(background_gradient, 0, 0);
   lv_obj_set_style_local_radius(background_gradient, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, 0);
+  // Praxiom brand colors: Orange/Amber (#CC6600) to Teal (#008B8B)
   lv_obj_set_style_local_bg_color(background_gradient, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xCC6600));
   lv_obj_set_style_local_bg_grad_color(background_gradient, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x008B8B));
   lv_obj_set_style_local_bg_grad_dir(background_gradient, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, LV_GRAD_DIR_VER);
@@ -63,10 +60,7 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
 
   labelPraxiomAgeNumber = lv_label_create(lv_scr_act(), nullptr);
   lv_label_set_text_static(labelPraxiomAgeNumber, "0.0");
-  lv_obj_set_style_local_text_font(labelPraxiomAgeNumber,
-                                   LV_LABEL_PART_MAIN,
-                                   LV_STATE_DEFAULT,
-                                   &jetbrains_mono_extrabold_compressed);
+  lv_obj_set_style_local_text_font(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_bold_42);
   lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));
   lv_obj_align(labelPraxiomAgeNumber, lv_scr_act(), LV_ALIGN_CENTER, 0, -10);
   UpdatePraxiomAgeDisplay(GetCurrentPraxiomAgeTenths());
@@ -124,7 +118,7 @@ WatchFaceDigital::~WatchFaceDigital() {
 // Update base Praxiom Age from phone app (called via BLE)
 void WatchFaceDigital::UpdateBasePraxiomAge(uint16_t ageTenths) {
   if (ageTenths == 0) {
-    ageTenths = DefaultPraxiomAgeTenths;
+    ageTenths = 530;
   }
   basePraxiomAgeTenths = ageTenths;
   auto now = std::chrono::duration_cast<std::chrono::seconds>(dateTimeController.CurrentDateTime().time_since_epoch());
@@ -135,11 +129,11 @@ void WatchFaceDigital::UpdateBasePraxiomAge(uint16_t ageTenths) {
 
 // Calculate final Praxiom Age
 uint16_t WatchFaceDigital::GetCurrentPraxiomAgeTenths() {
-  return basePraxiomAgeTenths == 0 ? DefaultPraxiomAgeTenths : basePraxiomAgeTenths;
+  return basePraxiomAgeTenths == 0 ? 530 : basePraxiomAgeTenths;
 }
 
 void WatchFaceDigital::UpdatePraxiomAgeDisplay(uint16_t ageTenths) {
-  const uint16_t baseAge = basePraxiomAgeTenths == 0 ? DefaultPraxiomAgeTenths : basePraxiomAgeTenths;
+  const uint16_t baseAge = basePraxiomAgeTenths == 0 ? 530 : basePraxiomAgeTenths;
 
   char buffer[8];
   snprintf(buffer, sizeof(buffer), "%u.%u", ageTenths / 10, ageTenths % 10);
@@ -157,12 +151,15 @@ lv_color_t WatchFaceDigital::GetPraxiomAgeColor(uint16_t currentAgeTenths, uint1
   const int16_t differenceTenths = static_cast<int16_t>(currentAgeTenths) - static_cast<int16_t>(baseAgeTenths);
 
   if (differenceTenths <= -20) {
+    // More than 2 years younger - GREEN (excellent health)
     return lv_color_hex(0x00FF00);
   }
   if (differenceTenths >= 20) {
+    // More than 2 years older - RED (poor health)
     return lv_color_hex(0xFF0000);
   }
 
+  // Within ±2 years - WHITE (neutral/good health)
   return lv_color_hex(0xFFFFFF);
 }
 
@@ -179,6 +176,7 @@ void WatchFaceDigital::Refresh() {
     uint8_t hour = dateTimeController.Hours();
     uint8_t minute = dateTimeController.Minutes();
 
+    // Update time
     lv_label_set_text_fmt(label_time, "%02d:%02d", hour, minute);
 
     currentDate = std::chrono::time_point_cast<std::chrono::days>(currentDateTime.Get());
@@ -203,3 +201,24 @@ void WatchFaceDigital::Refresh() {
       lv_label_set_text_static(heartbeatValue, "");
     }
     lv_obj_realign(heartbeatValue);
+  }
+
+  stepCount = motionController.NbSteps();
+  if (stepCount.IsUpdated()) {
+    lv_label_set_text_fmt(stepValue, "%lu", stepCount.Get());
+    lv_obj_realign(stepValue);
+  }
+
+  const uint16_t storedPraxiomTenths = settingsController.GetPraxiomBioAge();
+  if (storedPraxiomTenths != basePraxiomAgeTenths) {
+    basePraxiomAgeTenths = storedPraxiomTenths == 0 ? 530 : storedPraxiomTenths;
+    lastDisplayedPraxiomAgeTenths = 0xFFFF;
+  }
+
+  lastSyncTime = settingsController.GetPraxiomLastSync();
+
+  const uint16_t currentPraxiomTenths = GetCurrentPraxiomAgeTenths();
+  if (currentPraxiomTenths != lastDisplayedPraxiomAgeTenths) {
+    UpdatePraxiomAgeDisplay(currentPraxiomTenths);
+  }
+}
