@@ -33,8 +33,8 @@ void BootloaderVersion::SetVersion(uint32_t v) {
   BootloaderVersion::version = v;
   snprintf(BootloaderVersion::versionString,
            BootloaderVersion::VERSION_STR_LEN,
-           "%ld.%ld.%ld",
-           BootloaderVersion::Major(),
-           BootloaderVersion::Minor(),
-           BootloaderVersion::Patch());
+           "%u.%u.%u",
+           static_cast<unsigned int>(BootloaderVersion::Major()),
+           static_cast<unsigned int>(BootloaderVersion::Minor()),
+           static_cast<unsigned int>(BootloaderVersion::Patch()));
 }
