@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <inttypes.h>
 #include <nrf_log.h>
 
 using namespace Pinetime::Controllers;
@@ -96,25 +97,25 @@ int SimpleWeatherService::OnCommand(struct ble_gatt_access_ctxt* ctxt) {
     case MessageType::CurrentWeather:
       if (GetVersion(dataBuffer) == 0) {
         currentWeather = CreateCurrentWeather(dataBuffer);
-        NRF_LOG_INFO("Current weather :\n\tTimestamp : %d\n\tTemperature:%d\n\tMin:%d\n\tMax:%d\n\tIcon:%d\n\tLocation:%s",
-                     currentWeather->timestamp,
+        NRF_LOG_INFO("Current weather :\n\tTimestamp : %" PRIu64 "\n\tTemperature:%d\n\tMin:%d\n\tMax:%d\n\tIcon:%d\n\tLocation:%s",
+                     static_cast<uint64_t>(currentWeather->timestamp),
                      currentWeather->temperature.PreciseCelsius(),
                      currentWeather->minTemperature.PreciseCelsius(),
                      currentWeather->maxTemperature.PreciseCelsius(),
-                     currentWeather->iconId,
+                     static_cast<int>(currentWeather->iconId),
                      currentWeather->location.data());
       }
       break;
     case MessageType::Forecast:
       if (GetVersion(dataBuffer) == 0) {
         forecast = CreateForecast(dataBuffer);
-        NRF_LOG_INFO("Forecast : Timestamp : %d", forecast->timestamp);
+        NRF_LOG_INFO("Forecast : Timestamp : %" PRIu64, static_cast<uint64_t>(forecast->timestamp));
         for (int i = 0; i < 5; i++) {
           NRF_LOG_INFO("\t[%d] Min: %d - Max : %d - Icon : %d",
                        i,
                        forecast->days[i]->minTemperature.PreciseCelsius(),
                        forecast->days[i]->maxTemperature.PreciseCelsius(),
-                       forecast->days[i]->iconId);
+                       static_cast<int>(forecast->days[i]->iconId));
         }
       }
       break;
