@@ -57,20 +57,20 @@
 
 #include <algorithm>
 
-using namespace Pinetime::Applications;
-using namespace Pinetime::Applications::Display;
+namespace Pinetime {
+  namespace Applications {
+    using Display::Messages;
 
-namespace {
-  inline bool in_isr() {
-    return (SCB->ICSR & SCB_ICSR_VECTACTIVE_Msk) != 0;
-  }
+    namespace {
+      inline bool in_isr() {
+        return (SCB->ICSR & SCB_ICSR_VECTACTIVE_Msk) != 0;
+      }
 
-  void TimerCallback(TimerHandle_t xTimer) {
-    auto* dispApp = static_cast<DisplayApp*>(pvTimerGetTimerID(xTimer));
-    dispApp->PushMessage(Display::Messages::TimerDone);
-  }
-}
-
+      void TimerCallback(TimerHandle_t xTimer) {
+        auto* dispApp = static_cast<DisplayApp*>(pvTimerGetTimerID(xTimer));
+        dispApp->PushMessage(Display::Messages::TimerDone);
+      }
+    }
 DisplayApp::DisplayApp(Drivers::St7789& lcd,
                        const Drivers::Cst816S& touchPanel,
                        const Controllers::Battery& batteryController,
@@ -667,3 +667,6 @@ void DisplayApp::ApplyBrightness() {
   }
   brightnessController.Set(brightness);
 }
+
+  }  // namespace Applications
+}  // namespace Pinetime
