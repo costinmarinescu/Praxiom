@@ -74,6 +74,9 @@ namespace {
 
 using Messages = Display::Messages;
 
+namespace Pinetime {
+  namespace Applications {
+
 DisplayApp::DisplayApp(Drivers::St7789& lcd,
                        const Drivers::Cst816S& touchPanel,
                        const Controllers::Battery& batteryController,
@@ -700,36 +703,4 @@ void DisplayApp::SetFullRefresh(DisplayApp::FullRefreshDirections direction) {
     default:
       break;
   }
-}
-
-void DisplayApp::PushMessageToSystemTask(Pinetime::System::Messages message) {
-  if (systemTask != nullptr) {
-    systemTask->PushMessage(message);
-  }
-}
-
-void DisplayApp::Register(Pinetime::System::SystemTask* systemTask) {
-  this->systemTask = systemTask;
-  this->controllers.systemTask = systemTask;
-}
-
-void DisplayApp::Register(Pinetime::Controllers::SimpleWeatherService* weatherService) {
-  this->controllers.weatherController = weatherService;
-}
-
-void DisplayApp::Register(Pinetime::Controllers::MusicService* musicService) {
-  this->controllers.musicService = musicService;
-}
-
-void DisplayApp::Register(Pinetime::Controllers::NavigationService* NavigationService) {
-  this->controllers.navigationService = NavigationService;
-}
-
-void DisplayApp::ApplyBrightness() {
-  auto brightness = settingsController.GetBrightness();
-  if (brightness != Controllers::BrightnessController::Levels::Low && brightness != Controllers::BrightnessController::Levels::Medium &&
-      brightness != Controllers::BrightnessController::Levels::High) {
-    brightness = Controllers::BrightnessController::Levels::High;
-  }
-  brightnessController.Set(brightness);
 }
