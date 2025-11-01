@@ -57,10 +57,8 @@
 
 #include <algorithm>
 
-using namespace Pinetime::Applications;
-
 namespace {
-  using DisplayMessages = Display::Messages;
+  using DisplayMessages = Pinetime::Applications::Display::Messages;
 
   inline bool in_isr() {
     return (SCB->ICSR & SCB_ICSR_VECTACTIVE_Msk) != 0;
@@ -72,7 +70,7 @@ namespace {
   }
 }
 
-using Messages = Display::Messages;
+using Messages = Pinetime::Applications::Display::Messages;
 
 namespace Pinetime {
   namespace Applications {
@@ -704,3 +702,38 @@ void DisplayApp::SetFullRefresh(DisplayApp::FullRefreshDirections direction) {
       break;
   }
 }
+
+void DisplayApp::PushMessageToSystemTask(Pinetime::System::Messages message) {
+  if (systemTask != nullptr) {
+    systemTask->PushMessage(message);
+  }
+}
+
+void DisplayApp::Register(Pinetime::System::SystemTask* systemTask) {
+  this->systemTask = systemTask;
+  this->controllers.systemTask = systemTask;
+}
+
+void DisplayApp::Register(Pinetime::Controllers::SimpleWeatherService* weatherService) {
+  this->controllers.weatherController = weatherService;
+}
+
+void DisplayApp::Register(Pinetime::Controllers::MusicService* musicService) {
+  this->controllers.musicService = musicService;
+}
+
+void DisplayApp::Register(Pinetime::Controllers::NavigationService* NavigationService) {
+  this->controllers.navigationService = NavigationService;
+}
+
+void DisplayApp::ApplyBrightness() {
+  auto brightness = settingsController.GetBrightness();
+  if (brightness != Controllers::BrightnessController::Levels::Low && brightness != Controllers::BrightnessController::Levels::Medium &&
+      brightness != Controllers::BrightnessController::Levels::High) {
+    brightness = Controllers::BrightnessController::Levels::High;
+  }
+  brightnessController.Set(brightness);
+}
+
+  } // namespace Applications
+} // namespace Pinetime
