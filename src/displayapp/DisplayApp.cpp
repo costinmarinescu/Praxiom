@@ -164,7 +164,7 @@ void DisplayApp::Init() {
 }
 
 TickType_t DisplayApp::CalculateSleepTime() {
-  // Calculates how many system ticks DisplayApp should sleep before rendering the next AOD frame
+  // Calculates how manysystem ticks DisplayApp should sleep before rendering the next AOD frame
   // Next frame time is frame count * refresh period (ms) * tick rate
 
   auto RoundedDiv = [](uint32_t a, uint32_t b) {
