@@ -13,9 +13,6 @@
 #include "components/heartrate/HeartRateController.h"
 #include "components/motion/MotionController.h"
 
-// Font declaration - using only standard InfiniTime fonts
-LV_FONT_DECLARE(jetbrains_mono_extrabold_compressed);
-
 using namespace Pinetime::Applications::Screens;
 
 WatchFaceDigital::WatchFaceDigital(DisplayApp* app,
