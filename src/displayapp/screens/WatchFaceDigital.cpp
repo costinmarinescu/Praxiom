@@ -32,7 +32,7 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
     heartRateController {heartRateController},
     motionController {motionController},
     weatherService {weatherService},
-    statusIcons(batteryController, bleController),  // FIXED: Only 2 arguments (not 3!)
+    statusIcons(batteryController, bleController, alarmController),  // FIXED: StatusIcons needs all 3 arguments!
     basePraxiomAge(53),  // Demo age - will be replaced when phone app connects
     lastSyncTime(0) {
 
