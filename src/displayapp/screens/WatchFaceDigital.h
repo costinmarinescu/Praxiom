@@ -142,8 +142,8 @@ namespace Pinetime {
                                             controllers.settingsController,
                                             controllers.heartRateController,
                                             controllers.motionController,
-                                            controllers.weatherService,
-                                            controllers.nimbleController.GetPraxiomService());
+                                            *controllers.weatherService,
+                                            controllers.nimbleController->GetPraxiomService());
       }
 
       static bool IsAvailable(Pinetime::Controllers::FS& /*filesystem*/) {
