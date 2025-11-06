@@ -18,6 +18,7 @@
 #include "FSService.h"
 #include "HeartRateService.h"
 #include "ImmediateAlertService.h"
+#include "MotionService.h"
 #include "MusicService.h"
 #include "NavigationService.h"
 #include "ServiceDiscovery.h"
@@ -115,6 +116,7 @@ namespace Pinetime {
       BatteryInformationService batteryInformationService;
       ImmediateAlertService immediateAlertService;
       HeartRateService heartRateService;
+      MotionService motionService;  // ← ADDED
       PraxiomService praxiomService;  // ← ADDED
       ServiceDiscovery serviceDiscovery;
 

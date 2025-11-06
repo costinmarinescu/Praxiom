@@ -1,41 +1,33 @@
-/*  Copyright (C) 2021 Costin Marinescu
-    
-    This file is part of Praxiom.
-
-    Praxiom is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published
-    by the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    Praxiom is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>.
-*/
 #include "components/ble/PraxiomService.h"
 #include <nrf_log.h>
+
+#define min // workaround: nimble's min/max macros conflict with libstdc++
+#define max
+#include <host/ble_hs.h>
+#include <host/ble_gatt.h>
+#undef max
+#undef min
 
 using namespace Pinetime::Controllers;
 
 PraxiomService::PraxiomService()
   : characteristicDefinition {
       {
+        // Write characteristic - receives Bio-Age from mobile app
         .uuid = &writeCharUuid.u,
         .access_cb = OnPraxiomWriteCallback,
-        .arg = this, // CRITICAL: passes 'this' pointer to static callback
+        .arg = this,  // CRITICAL: passes 'this' pointer to static callback
         .flags = BLE_GATT_CHR_F_WRITE
       },
       {
+        // Notify characteristic - sends Bio-Age updates to mobile app
         .uuid = &notifyCharUuid.u,
-        .access_cb = nullptr, // Read-only for notifications
+        .access_cb = nullptr,  // Read-only for notifications
         .arg = this,
         .val_handle = &notifyCharHandle,
         .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY
       },
-      {0} // NULL TERMINATOR - DO NOT FORGET
+      {0}  // NULL TERMINATOR - DO NOT FORGET
     },
     serviceDefinition {
       {
@@ -43,7 +35,7 @@ PraxiomService::PraxiomService()
         .uuid = &serviceUuid.u,
         .characteristics = characteristicDefinition
       },
-      {0} // NULL TERMINATOR - DO NOT FORGET
+      {0}  // NULL TERMINATOR - DO NOT FORGET
     } {
 }
 
@@ -66,26 +58,36 @@ int PraxiomService::OnPraxiomWriteCallback(uint16_t conn_handle,
 }
 
 int PraxiomService::OnPraxiomWrite(uint16_t conn_handle,
-                                   uint16_t attr_handle,
-                                   struct ble_gatt_access_ctxt* ctxt) {
+                                  uint16_t attr_handle,
+                                  struct ble_gatt_access_ctxt* ctxt) {
   if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
-    // Extract 4 bytes for uint32_t age value
+    // Extract 4 bytes for uint32_t age
     if (OS_MBUF_PKTLEN(ctxt->om) == sizeof(uint32_t)) {
-      uint32_t receivedAge;
+      uint32_t receivedAge = 0;
       os_mbuf_copydata(ctxt->om, 0, sizeof(uint32_t), &receivedAge);
-      
       basePraxiomAge = receivedAge;
-      NRF_LOG_INFO("BasePraxiomAge updated to: %d", basePraxiomAge);
+      NRF_LOG_INFO("BasePraxiomAge received from app: %lu", basePraxiomAge);
     }
   }
   return 0;
 }
 
+void PraxiomService::SetBasePraxiomAge(uint32_t age) {
+  basePraxiomAge = age;
+  NRF_LOG_INFO("BasePraxiomAge set to: %lu", basePraxiomAge);
+}
+
+uint32_t PraxiomService::GetBasePraxiomAge() const {
+  return basePraxiomAge;
+}
+
 void PraxiomService::NotifyPraxiomAge(uint32_t age) {
-  // Notify connected clients of the current age
+  // Notify connected clients with updated age
   os_mbuf* om = ble_hs_mbuf_from_flat(&age, sizeof(age));
   if (om != nullptr) {
-    ble_gatts_notify_custom(0, notifyCharHandle, om);
-    NRF_LOG_INFO("Notified Praxiom Age: %d", age);
+    int rc = ble_gatts_notify_custom(0, notifyCharHandle, om);
+    if (rc == 0) {
+      NRF_LOG_INFO("PraxiomAge notification sent: %lu", age);
+    }
   }
 }
