@@ -98,6 +98,7 @@ void NimbleController::Init() {
   heartRateService.Init();
   motionService.Init();
   fsService.Init();
+  praxiomService.Init();
 
   int rc;
   rc = ble_hs_util_ensure_addr(0);
