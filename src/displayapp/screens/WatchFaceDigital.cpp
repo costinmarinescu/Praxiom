@@ -19,6 +19,7 @@
 using namespace Pinetime::Applications::Screens;
 
 namespace {
+  __attribute__((used))  // Tell compiler this function IS used (via function pointer)
   void RefreshTaskCallback(lv_task_t* task) {
     auto* screen = static_cast<WatchFaceDigital*>(task->user_data);
     screen->Refresh();
