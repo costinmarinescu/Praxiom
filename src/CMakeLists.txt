@@ -519,6 +519,7 @@ list(APPEND RECOVERY_SOURCE_FILES
         components/battery/BatteryController.cpp
         components/ble/BleController.cpp
         components/ble/NotificationManager.cpp
+        components/ble/PraxiomService.cpp
         components/datetime/DateTimeController.cpp
         components/brightness/BrightnessController.cpp
         components/motion/MotionController.cpp
