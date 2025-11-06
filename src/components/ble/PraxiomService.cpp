@@ -24,8 +24,8 @@ PraxiomService::PraxiomService()
         .uuid = &notifyCharUuid.u,
         .access_cb = nullptr,  // Read-only for notifications
         .arg = this,
-        .val_handle = &notifyCharHandle,
-        .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY
+        .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY,
+        .val_handle = &notifyCharHandle
       },
       {0}  // NULL TERMINATOR - DO NOT FORGET
     },
@@ -40,11 +40,8 @@ PraxiomService::PraxiomService()
 }
 
 void PraxiomService::Init() {
-  int res = ble_gatts_count_cfg(serviceDefinition);
-  ASSERT(res == 0);
-  
-  res = ble_gatts_add_svcs(serviceDefinition);
-  ASSERT(res == 0);
+  ble_gatts_count_cfg(serviceDefinition);
+  ble_gatts_add_svcs(serviceDefinition);
   
   NRF_LOG_INFO("PraxiomService initialized");
 }
@@ -57,8 +54,8 @@ int PraxiomService::OnPraxiomWriteCallback(uint16_t conn_handle,
   return service->OnPraxiomWrite(conn_handle, attr_handle, ctxt);
 }
 
-int PraxiomService::OnPraxiomWrite(uint16_t conn_handle,
-                                  uint16_t attr_handle,
+int PraxiomService::OnPraxiomWrite(uint16_t /*conn_handle*/,
+                                  uint16_t /*attr_handle*/,
                                   struct ble_gatt_access_ctxt* ctxt) {
   if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
     // Extract 4 bytes for uint32_t age
@@ -85,9 +82,7 @@ void PraxiomService::NotifyPraxiomAge(uint32_t age) {
   // Notify connected clients with updated age
   os_mbuf* om = ble_hs_mbuf_from_flat(&age, sizeof(age));
   if (om != nullptr) {
-    int rc = ble_gatts_notify_custom(0, notifyCharHandle, om);
-    if (rc == 0) {
-      NRF_LOG_INFO("PraxiomAge notification sent: %lu", age);
-    }
+    ble_gattc_notify_custom(0, notifyCharHandle, om);
+    NRF_LOG_INFO("PraxiomAge notification sent: %lu", age);
   }
 }
