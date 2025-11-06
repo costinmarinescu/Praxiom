@@ -719,6 +719,7 @@ void DisplayApp::Register(Pinetime::System::SystemTask* systemTask) {
 
 void DisplayApp::Register(Pinetime::Controllers::SimpleWeatherService* weatherService) {
   this->controllers.weatherController = weatherService;
+  this->controllers.weatherService = weatherService;
 }
 
 void DisplayApp::Register(Pinetime::Controllers::MusicService* musicService) {
@@ -728,6 +729,11 @@ void DisplayApp::Register(Pinetime::Controllers::MusicService* musicService) {
 void DisplayApp::Register(Pinetime::Controllers::NavigationService* NavigationService) {
   this->controllers.navigationService = NavigationService;
 }
+
+void DisplayApp::Register(Pinetime::Controllers::NimbleController* nimbleController) {
+  this->controllers.nimbleController = nimbleController;
+}
+
 
 void DisplayApp::ApplyBrightness() {
   auto brightness = settingsController.GetBrightness();

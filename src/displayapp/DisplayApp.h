@@ -43,6 +43,7 @@ namespace Pinetime {
     class SimpleWeatherService;
     class MusicService;
     class NavigationService;
+    class NimbleController;
   }
 
   namespace System {
@@ -83,6 +84,7 @@ namespace Pinetime {
       void Register(Pinetime::Controllers::SimpleWeatherService* weatherService);
       void Register(Pinetime::Controllers::MusicService* musicService);
       void Register(Pinetime::Controllers::NavigationService* NavigationService);
+      void Register(Pinetime::Controllers::NimbleController* nimbleController);
 
     private:
       Pinetime::Drivers::St7789& lcd;

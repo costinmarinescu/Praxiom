@@ -22,6 +22,7 @@ namespace Pinetime {
     class StopWatchController;
     class BrightnessController;
     class Timer;
+    class NimbleController;  // Forward declaration for nimbleController member
   }
   
   namespace Components {
@@ -54,6 +55,11 @@ namespace Pinetime {
       Pinetime::Components::LittleVgl& lvgl;                      // 17
       Controllers::NavigationService* navigationService;          // 18 - set by Register()
       Controllers::SimpleWeatherService* weatherController;       // 19 - set by Register()
+      
+      // Additional members needed by WatchFaceDigital and other screens:
+      // These are POINTERS because they're set via Register() after construction
+      Controllers::SimpleWeatherService* weatherService;          // Pointer - dereferenced in WatchFaceDigital
+      Controllers::NimbleController* nimbleController;            // Pointer - used in WatchFaceDigital
     };
   }
 }
