@@ -81,8 +81,28 @@ namespace Pinetime {
         return praxiomService;
       }
 
+      // ========== BACKWARD COMPATIBILITY WRAPPERS (START) ==========
+      // These methods provide backward compatibility with old code that
+      // uses the short method names instead of the Get* prefix
+      
+      Pinetime::Controllers::MusicService& music() {
+        return GetMusicService();
+      }
+      
+      Pinetime::Controllers::NavigationService& navigation() {
+        return GetNavigationService();
+      }
+      
+      Pinetime::Controllers::SimpleWeatherService& weather() {
+        return GetWeatherService();
+      }
+      
+      uint16_t connHandle() {
+        return GetConnHandle();
+      }
+      // ========== BACKWARD COMPATIBILITY WRAPPERS (END) ==========
+
       uint16_t GetConnHandle() const;
-      uint16_t connHandle();              // ← ADDED: Backward compatibility wrapper
       void NotifyBatteryLevel(uint8_t level);
 
       void RestartFastAdv() {
