@@ -402,6 +402,10 @@ uint16_t NimbleController::GetConnHandle() const {
   return connectionHandle;
 }
 
+uint16_t NimbleController::connHandle() {
+  return GetConnHandle();
+}
+
 void NimbleController::NotifyBatteryLevel(uint8_t level) {
   if (connectionHandle != BLE_HS_CONN_HANDLE_NONE) {
     batteryInformationService.NotifyBatteryLevel(connectionHandle, level);

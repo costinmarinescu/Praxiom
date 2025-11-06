@@ -82,6 +82,7 @@ namespace Pinetime {
       }
 
       uint16_t GetConnHandle() const;
+      uint16_t connHandle();              // ← ADDED: Backward compatibility wrapper
       void NotifyBatteryLevel(uint8_t level);
 
       void RestartFastAdv() {
