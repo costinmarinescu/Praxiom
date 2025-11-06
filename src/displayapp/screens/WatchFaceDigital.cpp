@@ -18,10 +18,11 @@
 
 using namespace Pinetime::Applications::Screens;
 
-// Static callback for lv_task
-static void RefreshTaskCallback(lv_task_t* task) {
-  auto* screen = static_cast<WatchFaceDigital*>(task->user_data);
-  screen->Refresh();
+namespace {
+  void RefreshTaskCallback(lv_task_t* task) {
+    auto* screen = static_cast<WatchFaceDigital*>(task->user_data);
+    screen->Refresh();
+  }
 }
 
 WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
@@ -33,8 +34,9 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
                                    Controllers::HeartRateController& heartRateController,
                                    Controllers::MotionController& motionController,
                                    Controllers::SimpleWeatherService& weatherService,
-                                   Controllers::PraxiomService& praxiomService)  // ← CHANGED
-  : currentDateTime {{}},
+                                   Controllers::PraxiomService& praxiomService)
+  : batteryIcon(false),
+    statusIcons(batteryController, bleController, alarmController),
     dateTimeController {dateTimeController},
     batteryController {batteryController},
     bleController {bleController},
@@ -44,9 +46,7 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
     heartRateController {heartRateController},
     motionController {motionController},
     weatherService {weatherService},
-    praxiomService {praxiomService},
-    batteryIcon(false),
-    statusIcons(batteryController, bleController, alarmController) {
+    praxiomService {praxiomService} {
 
   // Create orange-to-teal gradient background
   backgroundGradient = lv_obj_create(lv_scr_act(), nullptr);
@@ -75,13 +75,13 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
   // Praxiom Age Title
   label_praxiom_age_title = lv_label_create(lv_scr_act(), nullptr);
   lv_obj_set_style_local_text_color(label_praxiom_age_title, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_BLACK);
-  // Using default font instead of non-existent montserrat_16
+  lv_obj_set_style_local_text_font(label_praxiom_age_title, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &lv_font_montserrat_16);
   lv_label_set_text_static(label_praxiom_age_title, "Praxiom Age");
   lv_obj_align(label_praxiom_age_title, nullptr, LV_ALIGN_IN_TOP_MID, 0, 30);
 
   // Praxiom Age Value
   label_praxiom_age_value = lv_label_create(lv_scr_act(), nullptr);
-  // Using default font instead of non-existent montserrat_48
+  lv_obj_set_style_local_text_font(label_praxiom_age_value, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &lv_font_montserrat_48);
   lv_obj_set_style_local_text_color(label_praxiom_age_value, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_WHITE);
   lv_label_set_text_static(label_praxiom_age_value, "45.0");
   lv_obj_align(label_praxiom_age_value, label_praxiom_age_title, LV_ALIGN_OUT_BOTTOM_MID, 0, 5);
@@ -273,27 +273,50 @@ void WatchFaceDigital::UpdateHeartBeat() {
 void WatchFaceDigital::UpdateWeather() {
   auto optCurrentWeather = currentWeather.Get();
   if (optCurrentWeather) {
-    // Temperature is a type, need to get the value properly
-    int16_t temp = optCurrentWeather->temperature / 100;  // Convert from hundredths to whole degrees
+    // Temperature is a class - use its methods
+    int16_t temp;
     char tempUnit = 'C';
     if (settingsController.GetWeatherFormat() == Controllers::Settings::WeatherFormat::Imperial) {
-      // Inline Celsius to Fahrenheit conversion: F = (C * 9/5) + 32
-      temp = (temp * 9 / 5) + 32;
+      temp = optCurrentWeather->temperature.Fahrenheit();
       tempUnit = 'F';
+    } else {
+      temp = optCurrentWeather->temperature.Celsius();
     }
     lv_label_set_text_fmt(temperature, "%d°%c", temp, tempUnit);
     
-    // Simple weather icon based on iconId (using basic symbols instead of GetSymbol)
-    const char* icon = "?";  // Default
+    // Map icon IDs to Symbols - using only enum values that actually exist
+    const char* icon = "?";
     switch (optCurrentWeather->iconId) {
-      case Controllers::SimpleWeatherService::Icons::Sun: icon = Symbols::sun; break;
-      case Controllers::SimpleWeatherService::Icons::CloudsSun: icon = Symbols::cloudSun; break;
-      case Controllers::SimpleWeatherService::Icons::Clouds: icon = Symbols::cloud; break;
-      case Controllers::SimpleWeatherService::Icons::BrokenClouds: icon = Symbols::cloudSunRain; break;
-      case Controllers::SimpleWeatherService::Icons::CloudShowerDay: icon = Symbols::cloudShowersHeavy; break;
-      case Controllers::SimpleWeatherService::Icons::Rain: icon = Symbols::cloudShowersHeavy; break;
-      case Controllers::SimpleWeatherService::Icons::Snow: icon = Symbols::snowflake; break;
-      default: icon = "?"; break;
+      case Controllers::SimpleWeatherService::Icons::Sun:
+        icon = Symbols::sun;
+        break;
+      case Controllers::SimpleWeatherService::Icons::CloudsSun:
+        icon = Symbols::cloudSun;
+        break;
+      case Controllers::SimpleWeatherService::Icons::Clouds:
+        icon = Symbols::cloud;
+        break;
+      case Controllers::SimpleWeatherService::Icons::BrokenClouds:
+        icon = Symbols::cloudSunRain;
+        break;
+      case Controllers::SimpleWeatherService::Icons::CloudShowerHeavy:
+        icon = Symbols::cloudShowersHeavy;
+        break;
+      case Controllers::SimpleWeatherService::Icons::CloudSunRain:
+        icon = Symbols::cloudSunRain;
+        break;
+      case Controllers::SimpleWeatherService::Icons::Thunderstorm:
+        icon = Symbols::cloudShowersHeavy;
+        break;
+      case Controllers::SimpleWeatherService::Icons::Snow:
+        icon = Symbols::snowflake;
+        break;
+      case Controllers::SimpleWeatherService::Icons::Smog:
+        icon = Symbols::smog;
+        break;
+      default:
+        icon = "?";
+        break;
     }
     lv_label_set_text(weatherIcon, icon);
     lv_obj_set_hidden(weatherIcon, false);
