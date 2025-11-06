@@ -1,58 +1,33 @@
 #pragma once
 
 namespace Pinetime {
-  namespace Applications {
-    class DisplayApp;
-  }
-
-  namespace Components {
-    class LittleVgl;
-  }
-
   namespace Controllers {
     class Battery;
     class Ble;
     class DateTime;
     class NotificationManager;
     class HeartRateController;
-    class Settings;
-    class MotorController;
     class MotionController;
-    class StopWatchController;
-    class AlarmController;
-    class BrightnessController;
+    class Settings;
     class SimpleWeatherService;
     class FS;
-    class Timer;
-    class MusicService;
-    class NavigationService;
-  }
-
-  namespace System {
-    class SystemTask;
+    class AlarmController;
+    class NimbleController;  // ← ADDED forward declaration
   }
 
   namespace Applications {
     struct AppControllers {
-      const Pinetime::Controllers::Battery& batteryController;
-      const Pinetime::Controllers::Ble& bleController;
-      Pinetime::Controllers::DateTime& dateTimeController;
-      Pinetime::Controllers::NotificationManager& notificationManager;
-      Pinetime::Controllers::HeartRateController& heartRateController;
-      Pinetime::Controllers::Settings& settingsController;
-      Pinetime::Controllers::MotorController& motorController;
-      Pinetime::Controllers::MotionController& motionController;
-      Pinetime::Controllers::StopWatchController& stopWatchController;
-      Pinetime::Controllers::AlarmController& alarmController;
-      Pinetime::Controllers::BrightnessController& brightnessController;
-      Pinetime::Controllers::SimpleWeatherService* weatherController;
-      Pinetime::Controllers::FS& filesystem;
-      Pinetime::Controllers::Timer& timer;
-      Pinetime::System::SystemTask* systemTask;
-      Pinetime::Applications::DisplayApp* displayApp;
-      Pinetime::Components::LittleVgl& lvgl;
-      Pinetime::Controllers::MusicService* musicService;
-      Pinetime::Controllers::NavigationService* navigationService;
+      const Controllers::Battery& batteryController;
+      const Controllers::Ble& bleController;
+      Controllers::DateTime& dateTimeController;
+      Controllers::NotificationManager& notificationManager;
+      Controllers::HeartRateController& heartRateController;
+      Controllers::MotionController& motionController;
+      Controllers::Settings& settingsController;
+      Controllers::SimpleWeatherService& weatherService;
+      Controllers::FS& filesystem;
+      Controllers::AlarmController& alarmController;
+      Controllers::NimbleController& nimbleController;  // ← ADDED member
     };
   }
 }
