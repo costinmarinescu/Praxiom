@@ -34,21 +34,24 @@ NimbleController::NimbleController(Pinetime::System::SystemTask& systemTask,
   : systemTask {systemTask},
     bleController {bleController},
     dateTimeController {dateTimeController},
+    notificationManager {notificationManager},
     spiNorFlash {spiNorFlash},
     fs {fs},
     dfuService {systemTask, bleController, spiNorFlash},
+    fsService {systemTask, fs},
 
+    deviceInformationService {},
     currentTimeClient {dateTimeController},
     anService {systemTask, notificationManager},
     alertNotificationClient {systemTask, notificationManager},
     currentTimeService {dateTimeController},
     musicService {*this},
     weatherService {dateTimeController},
+    navigationService {},
     batteryInformationService {batteryController},
     immediateAlertService {systemTask, notificationManager},
     heartRateService {*this, heartRateController},
     motionService {*this, motionController},
-    fsService {systemTask, fs},
     praxiomService {},
     serviceDiscovery({&currentTimeClient, &alertNotificationClient}) {
 }
@@ -395,7 +398,7 @@ void NimbleController::StartDiscovery() {
   }
 }
 
-uint16_t NimbleController::connHandle() {
+uint16_t NimbleController::GetConnHandle() const {
   return connectionHandle;
 }
 
