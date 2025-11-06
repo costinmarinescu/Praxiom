@@ -6,7 +6,6 @@
 #include "displayapp/screens/BleIcon.h"
 #include "displayapp/screens/NotificationIcon.h"
 #include "displayapp/screens/Symbols.h"
-#include "displayapp/screens/WeatherSymbols.h"
 #include "components/battery/BatteryController.h"
 #include "components/ble/BleController.h"
 #include "components/ble/NotificationManager.h"
@@ -16,94 +15,108 @@
 
 using namespace Pinetime::Applications::Screens;
 
+namespace {
+  void ValueOutOfRange() {
+  }
+}
+
 WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
                                    const Controllers::Battery& batteryController,
                                    const Controllers::Ble& bleController,
-                                   const Controllers::AlarmController& alarmController,
                                    Controllers::NotificationManager& notificationManager,
                                    Controllers::Settings& settingsController,
                                    Controllers::HeartRateController& heartRateController,
-                                   Controllers::MotionController& motionController,
-                                   Controllers::SimpleWeatherService& weatherService)
+                                   Controllers::MotionController& motionController)
   : currentDateTime {{}},
     dateTimeController {dateTimeController},
+    batteryController {batteryController},
+    bleController {bleController},
     notificationManager {notificationManager},
     settingsController {settingsController},
     heartRateController {heartRateController},
-    motionController {motionController},
-    weatherService {weatherService},
-    statusIcons(batteryController, bleController, alarmController),  // FIXED: StatusIcons needs all 3 arguments!
-    basePraxiomAge(53),  // Demo age - will be replaced when phone app connects
-    lastSyncTime(0) {
+    motionController {motionController} {
 
-  // Create Praxiom brand gradient background (Orange/Amber to Teal/Cyan)
-  lv_obj_t* background_gradient = lv_obj_create(lv_scr_act(), nullptr);
-  lv_obj_set_size(background_gradient, 240, 240);
-  lv_obj_set_pos(background_gradient, 0, 0);
-  lv_obj_set_style_local_radius(background_gradient, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, 0);
-  // Praxiom brand colors: Orange/Amber (#CC6600) to Teal (#008B8B)
-  lv_obj_set_style_local_bg_color(background_gradient, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xCC6600));
-  lv_obj_set_style_local_bg_grad_color(background_gradient, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x008B8B));
-  lv_obj_set_style_local_bg_grad_dir(background_gradient, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, LV_GRAD_DIR_VER);
-  lv_obj_set_style_local_border_width(background_gradient, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, 0);
+  // Create gradient background (orange to teal)
+  static lv_color_t gradientColors[2];
+  gradientColors[0] = lv_color_hex(0xFF6B35);  // Orange
+  gradientColors[1] = lv_color_hex(0x00CED1);  // Teal
+  
+  static lv_style_t gradientStyle;
+  lv_style_init(&gradientStyle);
+  lv_style_set_bg_color(&gradientStyle, LV_STATE_DEFAULT, gradientColors[0]);
+  lv_style_set_bg_grad_color(&gradientStyle, LV_STATE_DEFAULT, gradientColors[1]);
+  lv_style_set_bg_grad_dir(&gradientStyle, LV_STATE_DEFAULT, LV_GRAD_DIR_VER);
+  
+  lv_obj_t* background = lv_obj_create(lv_scr_act(), nullptr);
+  lv_obj_set_size(background, LV_HOR_RES, LV_VER_RES);
+  lv_obj_add_style(background, LV_OBJ_PART_MAIN, &gradientStyle);
+  lv_obj_align(background, nullptr, LV_ALIGN_CENTER, 0, 0);
 
-  statusIcons.Create();
-  lv_obj_align(statusIcons.GetObject(), lv_scr_act(), LV_ALIGN_IN_TOP_RIGHT, -8, 0);
+  batteryIcon.Create(lv_scr_act());
+  lv_obj_align(batteryIcon.GetObject(), lv_scr_act(), LV_ALIGN_IN_TOP_RIGHT, 0, 0);
 
-  // Create and position Praxiom Age label (text) - WHITE to match the number
-  labelPraxiomAge = lv_label_create(lv_scr_act(), nullptr);
-  lv_label_set_text_static(labelPraxiomAge, "Praxiom Age");
-  lv_obj_set_style_local_text_font(labelPraxiomAge, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_bold_20);
-  lv_obj_set_style_local_text_color(labelPraxiomAge, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));  // WHITE
-  lv_obj_align(labelPraxiomAge, lv_scr_act(), LV_ALIGN_CENTER, 0, -80);
+  bleIcon = lv_label_create(lv_scr_act(), nullptr);
+  lv_obj_set_style_local_text_color(bleIcon, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x0082FC));
+  lv_label_set_text_static(bleIcon, Symbols::bluetooth);
+  lv_obj_align(bleIcon, batteryIcon.GetObject(), LV_ALIGN_OUT_LEFT_MID, -5, 0);
 
-  // Create Praxiom Age number - BOLD large digits - WHITE (neutral color)
-  labelPraxiomAgeNumber = lv_label_create(lv_scr_act(), nullptr);
-  lv_label_set_text_static(labelPraxiomAgeNumber, "53");  // Initial demo value
-  lv_obj_set_style_local_text_font(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_extrabold_compressed);  // BOLD font
-  lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));  // Start with white
-  lv_obj_align(labelPraxiomAgeNumber, lv_scr_act(), LV_ALIGN_CENTER, 0, -10);
+  notificationIcon = lv_label_create(lv_scr_act(), nullptr);
+  lv_obj_set_style_local_text_color(notificationIcon, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x00FF00));
+  lv_label_set_text_static(notificationIcon, NotificationIcon::GetIcon(false));
+  lv_obj_align(notificationIcon, nullptr, LV_ALIGN_IN_TOP_LEFT, 0, 0);
 
-  // Time label - BLACK (medium size, between Praxiom Age and date)
+  // Praxiom Age Label (WHITE for better contrast)
+  label_praxiom_age_text = lv_label_create(lv_scr_act(), nullptr);
+  lv_obj_set_style_local_text_font(label_praxiom_age_text, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_bold_20);
+  lv_obj_set_style_local_text_color(label_praxiom_age_text, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_WHITE);
+  lv_label_set_text_static(label_praxiom_age_text, "Praxiom Age");
+  lv_obj_align(label_praxiom_age_text, lv_scr_act(), LV_ALIGN_CENTER, 0, -80);
+
+  // Praxiom Age Number (Large, color-coded)
+  label_praxiom_age = lv_label_create(lv_scr_act(), nullptr);
+  lv_obj_set_style_local_text_font(label_praxiom_age, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_extrabold_compressed);
+  lv_label_set_text_static(label_praxiom_age, "0.0");
+  lv_obj_align(label_praxiom_age, lv_scr_act(), LV_ALIGN_CENTER, 0, -30);
+
+  // Time display - UPDATED TO USE jetbrains_mono_42 (GOLDILOCKS SIZE!)
   label_time = lv_label_create(lv_scr_act(), nullptr);
-  lv_obj_set_style_local_text_font(label_time, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_bold_20);  // Perfect medium size
-  lv_obj_set_style_local_text_color(label_time, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x000000));
-  lv_label_set_text_static(label_time, "00:00");
-  lv_obj_align(label_time, lv_scr_act(), LV_ALIGN_CENTER, 0, 55);
+  lv_obj_set_style_local_text_font(label_time, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_42);
+  lv_obj_set_style_local_text_color(label_time, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_BLACK);
+  lv_obj_align(label_time, lv_scr_act(), LV_ALIGN_CENTER, 0, 30);
 
-  // Date label - BLACK
+  label_time_ampm = lv_label_create(lv_scr_act(), nullptr);
+  lv_obj_set_style_local_text_color(label_time_ampm, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_BLACK);
+  lv_label_set_text_static(label_time_ampm, "");
+  lv_obj_align(label_time_ampm, lv_scr_act(), LV_ALIGN_IN_RIGHT_MID, -30, -55);
+
+  // Date display
   label_date = lv_label_create(lv_scr_act(), nullptr);
+  lv_obj_set_style_local_text_color(label_date, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_BLACK);
   lv_obj_set_style_local_text_font(label_date, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_bold_20);
-  lv_obj_set_style_local_text_color(label_date, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x000000));
-  lv_obj_align(label_date, lv_scr_act(), LV_ALIGN_CENTER, 0, 90);
+  lv_obj_align(label_date, lv_scr_act(), LV_ALIGN_CENTER, 0, 60);
+  lv_label_set_text_static(label_date, "");
 
-  // Heart rate icon and label - BLACK
+  // Heart rate
   heartbeatIcon = lv_label_create(lv_scr_act(), nullptr);
   lv_label_set_text_static(heartbeatIcon, Symbols::heartBeat);
-  lv_obj_set_style_local_text_color(heartbeatIcon, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x000000));
+  lv_obj_set_style_local_text_color(heartbeatIcon, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xCE1B1B));
   lv_obj_align(heartbeatIcon, lv_scr_act(), LV_ALIGN_IN_BOTTOM_LEFT, 0, 0);
 
   heartbeatValue = lv_label_create(lv_scr_act(), nullptr);
-  lv_obj_set_style_local_text_color(heartbeatValue, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x000000));
+  lv_obj_set_style_local_text_color(heartbeatValue, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xCE1B1B));
   lv_label_set_text_static(heartbeatValue, "");
   lv_obj_align(heartbeatValue, heartbeatIcon, LV_ALIGN_OUT_RIGHT_MID, 5, 0);
 
-  // Step icon and label - BLACK
-  stepIcon = lv_label_create(lv_scr_act(), nullptr);
-  lv_obj_set_style_local_text_color(stepIcon, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x000000));
-  lv_label_set_text_static(stepIcon, Symbols::shoe);
-  lv_obj_align(stepIcon, lv_scr_act(), LV_ALIGN_IN_BOTTOM_RIGHT, 0, 0);
-
+  // Steps
   stepValue = lv_label_create(lv_scr_act(), nullptr);
-  lv_obj_set_style_local_text_color(stepValue, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x000000));
+  lv_obj_set_style_local_text_color(stepValue, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x00FFE7));
   lv_label_set_text_static(stepValue, "0");
-  lv_obj_align(stepValue, stepIcon, LV_ALIGN_OUT_LEFT_MID, -5, 0);
+  lv_obj_align(stepValue, lv_scr_act(), LV_ALIGN_IN_BOTTOM_RIGHT, 0, 0);
 
-  // Notification icon - BLACK
-  notificationIcon = lv_label_create(lv_scr_act(), nullptr);
-  lv_obj_set_style_local_text_color(notificationIcon, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x000000));
-  lv_label_set_text_static(notificationIcon, NotificationIcon::GetIcon(false));
-  lv_obj_align(notificationIcon, nullptr, LV_ALIGN_IN_TOP_LEFT, 0, 0);
+  stepIcon = lv_label_create(lv_scr_act(), nullptr);
+  lv_obj_set_style_local_text_color(stepIcon, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x00FFE7));
+  lv_label_set_text_static(stepIcon, Symbols::shoe);
+  lv_obj_align(stepIcon, stepValue, LV_ALIGN_OUT_LEFT_MID, -5, 0);
 
   taskRefresh = lv_task_create(RefreshTaskCallback, LV_DISP_DEF_REFR_PERIOD, LV_TASK_PRIO_MID, this);
   Refresh();
@@ -114,156 +127,131 @@ WatchFaceDigital::~WatchFaceDigital() {
   lv_obj_clean(lv_scr_act());
 }
 
-// Update base Praxiom Age from phone app (called via BLE)
-void WatchFaceDigital::UpdateBasePraxiomAge(int age) {
-  basePraxiomAge = age;
-  lastSyncTime = dateTimeController.CurrentDateTime().time_since_epoch().count();
-}
-
-// Calculate real-time adjustment based on watch sensors
-float WatchFaceDigital::CalculateRealtimeAdjustment() {
-  float adjustment = 0.0f;
-  
-  // Get current sensor data
-  uint8_t currentHeartRate = heartRateController.HeartRate();
-  uint32_t currentSteps = motionController.NbSteps();
-  
-  // Heart rate deviation adjustment (-1 to +2 years based on HR)
-  if (currentHeartRate > 0) {
-    if (currentHeartRate < 50 || currentHeartRate > 90) {
-      // Poor resting HR
-      adjustment += 1.5f;
-    } else if (currentHeartRate >= 50 && currentHeartRate <= 60) {
-      // Excellent resting HR
-      adjustment -= 0.5f;
-    } else if (currentHeartRate >= 61 && currentHeartRate <= 70) {
-      // Good resting HR
-      adjustment -= 0.2f;
-    } else if (currentHeartRate >= 71 && currentHeartRate <= 80) {
-      // Fair resting HR
-      adjustment += 0.3f;
-    } else {
-      // Suboptimal resting HR
-      adjustment += 0.8f;
-    }
-  }
-  
-  // Daily activity adjustment (-1 to +1 year based on steps)
-  if (currentSteps >= 10000) {
-    adjustment -= 0.8f;  // Excellent activity
-  } else if (currentSteps >= 8000) {
-    adjustment -= 0.3f;  // Good activity
-  } else if (currentSteps >= 5000) {
-    adjustment += 0.2f;  // Moderate activity
-  } else if (currentSteps >= 3000) {
-    adjustment += 0.5f;  // Low activity
-  } else {
-    adjustment += 1.0f;  // Sedentary
-  }
-  
-  // Cap adjustment to reasonable range
-  if (adjustment < -2.0f) adjustment = -2.0f;
-  if (adjustment > 3.0f) adjustment = 3.0f;
-  
-  return adjustment;
-}
-
-// Calculate final Praxiom Age
-int WatchFaceDigital::GetCurrentPraxiomAge() {
-  // Demo mode: basePraxiomAge = 53 until phone app connects and updates it
-  // Real mode: basePraxiomAge updated by phone app via UpdateBasePraxiomAge()
-  
-  float adjustment = CalculateRealtimeAdjustment();
-  int finalAge = basePraxiomAge + (int)adjustment;
-  
-  // Ensure reasonable bounds (18-120)
-  if (finalAge < 18) finalAge = 18;
-  if (finalAge > 120) finalAge = 120;
-  
-  return finalAge;
-}
-
-// Get color based on Praxiom Age difference from base age
-lv_color_t WatchFaceDigital::GetPraxiomAgeColor(int currentAge, int baseAge) {
-  int difference = currentAge - baseAge;
-  
-  if (difference < -2) {
-    // More than 2 years younger - GREEN (excellent health)
-    return lv_color_hex(0x00FF00);
-  } else if (difference > 2) {
-    // More than 2 years older - RED (poor health)
-    return lv_color_hex(0xFF0000);
-  } else {
-    // Within ±2 years - WHITE (neutral/good health)
-    return lv_color_hex(0xFFFFFF);
-  }
-}
-
 void WatchFaceDigital::Refresh() {
-  statusIcons.Update();
+  powerPresent = batteryController.IsPowerPresent();
+  batteryPercentRemaining = batteryController.PercentRemaining();
+  if (batteryPercentRemaining.IsUpdated() || powerPresent.IsUpdated()) {
+    batteryIcon.SetBatteryPercentage(batteryPercentRemaining.Get());
+    batteryIcon.SetPowerPresent(powerPresent.Get());
+  }
 
+  bleState = bleController.IsConnected();
+  bleRadioEnabled = bleController.IsRadioEnabled();
+  if (bleState.IsUpdated() || bleRadioEnabled.IsUpdated()) {
+    lv_label_set_text_static(bleIcon, BleIcon::GetIcon(bleState.Get()));
+  }
+
+  notificationState = notificationManager.AreNewNotificationsAvailable();
   if (notificationState.IsUpdated()) {
     lv_label_set_text_static(notificationIcon, NotificationIcon::GetIcon(notificationState.Get()));
   }
 
-  currentDateTime = std::chrono::time_point_cast<std::chrono::minutes>(dateTimeController.CurrentDateTime());
-
+  currentDateTime = std::chrono::time_point_cast<std::chrono::seconds>(dateTimeController.CurrentDateTime());
   if (currentDateTime.IsUpdated()) {
     uint8_t hour = dateTimeController.Hours();
     uint8_t minute = dateTimeController.Minutes();
 
-    // Update time
-    lv_label_set_text_fmt(label_time, "%02d:%02d", hour, minute);
+    if (settingsController.GetClockType() == Controllers::Settings::ClockType::H12) {
+      char ampmChar[3] = "AM";
+      if (hour == 0) {
+        hour = 12;
+      } else if (hour == 12) {
+        ampmChar[0] = 'P';
+      } else if (hour > 12) {
+        hour = hour - 12;
+        ampmChar[0] = 'P';
+      }
+      lv_label_set_text(label_time_ampm, ampmChar);
+      lv_label_set_text_fmt(label_time, "%2d:%02d", hour, minute);
+    } else {
+      lv_label_set_text_fmt(label_time, "%02d:%02d", hour, minute);
+    }
 
     currentDate = std::chrono::time_point_cast<std::chrono::days>(currentDateTime.Get());
     if (currentDate.IsUpdated()) {
       uint16_t year = dateTimeController.Year();
       uint8_t day = dateTimeController.Day();
-      // FIXED: Added month name to date display
+      Controllers::DateTime::Months month = dateTimeController.Month();
+      Controllers::DateTime::Days dayOfWeek = dateTimeController.DayOfWeek();
+
       lv_label_set_text_fmt(label_date,
-                            "%s %d %s %d",
-                            dateTimeController.DayOfWeekShortToString(),
-                            day,
-                            dateTimeController.MonthShortToString(),
-                            year);
-      lv_obj_realign(label_date);
+                           "%s %d %s %04d",
+                           dateTimeController.DayOfWeekShortToString(dayOfWeek),
+                           day,
+                           dateTimeController.MonthShortToString(month),
+                           year);
     }
   }
+
+  // Update Praxiom Age with color coding and real-time adjustments
+  UpdatePraxiomAge();
 
   heartbeat = heartRateController.HeartRate();
   heartbeatRunning = heartRateController.State() != Controllers::HeartRateController::States::Stopped;
   if (heartbeat.IsUpdated() || heartbeatRunning.IsUpdated()) {
     if (heartbeatRunning.Get()) {
+      lv_obj_set_style_local_text_color(heartbeatIcon, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xCE1B1B));
+      lv_obj_set_style_local_text_color(heartbeatValue, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xCE1B1B));
       lv_label_set_text_fmt(heartbeatValue, "%d", heartbeat.Get());
     } else {
+      lv_obj_set_style_local_text_color(heartbeatIcon, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x1B1B1B));
+      lv_obj_set_style_local_text_color(heartbeatValue, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x1B1B1B));
       lv_label_set_text_static(heartbeatValue, "");
     }
-    lv_obj_realign(heartbeatValue);
   }
 
   stepCount = motionController.NbSteps();
   if (stepCount.IsUpdated()) {
     lv_label_set_text_fmt(stepValue, "%lu", stepCount.Get());
-    lv_obj_realign(stepValue);
   }
+}
 
-  // Update Praxiom Age every minute with dynamic color
-  static uint8_t lastMinute = 0;
-  uint8_t currentMinute = dateTimeController.Minutes();
+void WatchFaceDigital::UpdateBasePraxiomAge(float age) {
+  basePraxiomAge = age;
+}
+
+void WatchFaceDigital::UpdatePraxiomAge() {
+  // Get current sensor data
+  uint8_t hr = heartRateController.HeartRate();
+  uint32_t steps = motionController.NbSteps();
   
-  if (currentMinute != lastMinute) {
-    int praxiomAge = GetCurrentPraxiomAge();
-    
-    // Update the number
-    lv_label_set_text_fmt(labelPraxiomAgeNumber, "%d", praxiomAge);
-    
-    // Update the color based on difference from base age
-    lv_color_t ageColor = GetPraxiomAgeColor(praxiomAge, basePraxiomAge);
-    lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, ageColor);
-    
-    lv_obj_realign(labelPraxiomAgeNumber);
-    lastMinute = currentMinute;
-    
-    // TODO: Send updated Praxiom Age back to phone via BLE every 10 minutes
+  // Start with base age
+  float displayAge = basePraxiomAge;
+  
+  // Real-time adjustments based on current activity
+  if (hr > 0) {
+    if (hr > 100) {
+      // Elevated heart rate: reduce by 0.5
+      displayAge -= 0.5f;
+    } else if (hr < 60) {
+      // Low heart rate: increase by 0.2
+      displayAge += 0.2f;
+    }
   }
+  
+  // Steps adjustment
+  if (steps > 10000) {
+    displayAge -= 0.3f;  // Good activity level
+  } else if (steps < 3000) {
+    displayAge += 0.2f;  // Sedentary
+  }
+  
+  // Ensure age stays in reasonable bounds
+  if (displayAge < 18.0f) displayAge = 18.0f;
+  if (displayAge > 120.0f) displayAge = 120.0f;
+  
+  // Update the display with decimal point
+  lv_label_set_text_fmt(label_praxiom_age, "%.1f", displayAge);
+  
+  // Color coding based on age
+  lv_color_t ageColor;
+  if (displayAge < 30.0f) {
+    ageColor = lv_color_hex(0x00FF00);  // Green - excellent
+  } else if (displayAge < 50.0f) {
+    ageColor = LV_COLOR_WHITE;  // White - good
+  } else {
+    ageColor = lv_color_hex(0xFF0000);  // Red - needs improvement
+  }
+  
+  lv_obj_set_style_local_text_color(label_praxiom_age, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, ageColor);
 }
