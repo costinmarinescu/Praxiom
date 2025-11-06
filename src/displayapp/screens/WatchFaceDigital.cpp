@@ -75,13 +75,11 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
   // Praxiom Age Title
   label_praxiom_age_title = lv_label_create(lv_scr_act(), nullptr);
   lv_obj_set_style_local_text_color(label_praxiom_age_title, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_BLACK);
-  lv_obj_set_style_local_text_font(label_praxiom_age_title, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &lv_font_montserrat_16);
   lv_label_set_text_static(label_praxiom_age_title, "Praxiom Age");
   lv_obj_align(label_praxiom_age_title, nullptr, LV_ALIGN_IN_TOP_MID, 0, 30);
 
   // Praxiom Age Value
   label_praxiom_age_value = lv_label_create(lv_scr_act(), nullptr);
-  lv_obj_set_style_local_text_font(label_praxiom_age_value, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &lv_font_montserrat_48);
   lv_obj_set_style_local_text_color(label_praxiom_age_value, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_WHITE);
   lv_label_set_text_static(label_praxiom_age_value, "45.0");
   lv_obj_align(label_praxiom_age_value, label_praxiom_age_title, LV_ALIGN_OUT_BOTTOM_MID, 0, 5);
