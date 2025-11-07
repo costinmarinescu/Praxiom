@@ -1,66 +1,70 @@
-#include "components/ble/PraxiomService.h"
-#include <nrf_log.h>
+/*  Copyright (C) 2024 Praxiom Health
 
-#define min // workaround: nimble's min/max macros conflict with libstdc++
-#define max
-#include <host/ble_hs.h>
-#include <host/ble_gatt.h>
-#undef max
-#undef min
+    This file is part of Praxiom.
+
+    Praxiom is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published
+    by the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Praxiom is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+#include "components/ble/PraxiomService.h"
+
+#include <cstring>
+#include <nrf_log.h>
 
 using namespace Pinetime::Controllers;
 
-// Global callback function (like SimpleWeatherService)
-int PraxiomCallback(uint16_t /*conn_handle*/, uint16_t /*attr_handle*/, struct ble_gatt_access_ctxt* ctxt, void* arg) {
+namespace {
+  uint32_t ToUInt32(const uint8_t* data) {
+    return data[0] + (data[1] << 8) + (data[2] << 16) + (data[3] << 24);
+  }
+}
+
+int PraxiomCallback(uint16_t /*connHandle*/, uint16_t /*attrHandle*/, struct ble_gatt_access_ctxt* ctxt, void* arg) {
   return static_cast<Pinetime::Controllers::PraxiomService*>(arg)->OnCommand(ctxt);
 }
 
 PraxiomService::PraxiomService() {
-  // Constructor is now minimal - arrays initialized in header
 }
 
 void PraxiomService::Init() {
   ble_gatts_count_cfg(serviceDefinition);
   ble_gatts_add_svcs(serviceDefinition);
-  
-  NRF_LOG_INFO("PraxiomService initialized");
 }
 
 int PraxiomService::OnCommand(struct ble_gatt_access_ctxt* ctxt) {
   if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
-    // Extract 4 bytes for uint32_t age
-    if (OS_MBUF_PKTLEN(ctxt->om) == sizeof(uint32_t)) {
-      uint32_t receivedAge = 0;
-      os_mbuf_copydata(ctxt->om, 0, sizeof(uint32_t), &receivedAge);
+    // Handle WRITE operation - mobile app sending Bio-Age
+    const auto* buffer = ctxt->om;
+    const auto* dataBuffer = buffer->om_data;
+    
+    // Extract 4-byte uint32_t age value
+    if (OS_MBUF_PKTLEN(buffer) == sizeof(uint32_t)) {
+      basePraxiomAge = ToUInt32(dataBuffer);
       
-      // Sanity check: reasonable age range (18-120)
-      if (receivedAge >= 18 && receivedAge <= 120) {
-        basePraxiomAge = receivedAge;
-        NRF_LOG_INFO("BasePraxiomAge received from app: %lu", basePraxiomAge);
-      } else {
-        NRF_LOG_WARNING("Received invalid age: %lu (ignoring)", receivedAge);
-      }
+      NRF_LOG_INFO("Praxiom Base Age received from mobile app: %d", basePraxiomAge);
+    } else {
+      NRF_LOG_WARNING("Invalid Praxiom Age data length: %d (expected 4)", OS_MBUF_PKTLEN(buffer));
     }
+    
+    return 0;
+  } else if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR) {
+    // Handle READ operation - mobile app reading current Bio-Age
+    os_mbuf_append(ctxt->om, &basePraxiomAge, sizeof(basePraxiomAge));
+    
+    NRF_LOG_INFO("Praxiom Base Age read by mobile app: %d", basePraxiomAge);
+    
+    return 0;
   }
+  
   return 0;
-}
-
-void PraxiomService::SetBasePraxiomAge(uint32_t age) {
-  if (age >= 18 && age <= 120) {
-    basePraxiomAge = age;
-    NRF_LOG_INFO("BasePraxiomAge set to: %lu", basePraxiomAge);
-  }
-}
-
-uint32_t PraxiomService::GetBasePraxiomAge() const {
-  return basePraxiomAge;
-}
-
-void PraxiomService::NotifyPraxiomAge(uint32_t age) {
-  // Notify connected clients with updated age
-  os_mbuf* om = ble_hs_mbuf_from_flat(&age, sizeof(age));
-  if (om != nullptr) {
-    ble_gattc_notify_custom(0, notifyCharHandle, om);
-    NRF_LOG_INFO("PraxiomAge notification sent: %lu", age);
-  }
 }
