@@ -252,8 +252,9 @@ void WatchFaceDigital::Refresh() {
 
   // Check if Bio-Age was updated from mobile app via BLE
   uint32_t bleAge = praxiomService.GetBasePraxiomAge();
-  if (bleAge > 0 && bleAge != static_cast<uint32_t>(basePraxiomAge)) {
-    basePraxiomAge = bleAge;
+  // SAFE: Only accept reasonable age values (18-120)
+  if (bleAge >= 18 && bleAge <= 120 && bleAge != static_cast<uint32_t>(basePraxiomAge)) {
+    basePraxiomAge = static_cast<int>(bleAge);
     lastSyncTime = dateTimeController.CurrentDateTime().time_since_epoch().count();
   }
 
