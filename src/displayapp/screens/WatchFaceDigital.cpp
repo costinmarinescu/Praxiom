@@ -10,6 +10,7 @@
 #include "components/battery/BatteryController.h"
 #include "components/ble/BleController.h"
 #include "components/ble/NotificationManager.h"
+#include "components/ble/PraxiomService.h"
 #include "components/heartrate/HeartRateController.h"
 #include "components/motion/MotionController.h"
 #include "components/settings/Settings.h"
@@ -24,7 +25,8 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
                                    Controllers::Settings& settingsController,
                                    Controllers::HeartRateController& heartRateController,
                                    Controllers::MotionController& motionController,
-                                   Controllers::SimpleWeatherService& weatherService)
+                                   Controllers::SimpleWeatherService& weatherService,
+                                   Controllers::PraxiomService& praxiomService)
   : currentDateTime {{}},
     dateTimeController {dateTimeController},
     notificationManager {notificationManager},
@@ -32,6 +34,7 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
     heartRateController {heartRateController},
     motionController {motionController},
     weatherService {weatherService},
+    praxiomService {praxiomService},
     statusIcons(batteryController, bleController, alarmController),  // FIXED: StatusIcons needs all 3 arguments!
     basePraxiomAge(53),  // Demo age - will be replaced when phone app connects
     lastSyncTime(0) {
@@ -245,6 +248,13 @@ void WatchFaceDigital::Refresh() {
   if (stepCount.IsUpdated()) {
     lv_label_set_text_fmt(stepValue, "%lu", stepCount.Get());
     lv_obj_realign(stepValue);
+  }
+
+  // Check if Bio-Age was updated from mobile app via BLE
+  uint32_t bleAge = praxiomService.GetBasePraxiomAge();
+  if (bleAge > 0 && bleAge != static_cast<uint32_t>(basePraxiomAge)) {
+    basePraxiomAge = bleAge;
+    lastSyncTime = dateTimeController.CurrentDateTime().time_since_epoch().count();
   }
 
   // Update Praxiom Age every minute with dynamic color

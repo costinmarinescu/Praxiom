@@ -21,6 +21,7 @@ namespace Pinetime {
     class NotificationManager;
     class HeartRateController;
     class MotionController;
+    class PraxiomService;
   }
 
   namespace Applications {
@@ -36,7 +37,8 @@ namespace Pinetime {
                          Controllers::Settings& settingsController,
                          Controllers::HeartRateController& heartRateController,
                          Controllers::MotionController& motionController,
-                         Controllers::SimpleWeatherService& weather);
+                         Controllers::SimpleWeatherService& weather,
+                         Controllers::PraxiomService& praxiomService);
         ~WatchFaceDigital() override;
 
         void Refresh() override;
@@ -74,6 +76,7 @@ namespace Pinetime {
         Controllers::HeartRateController& heartRateController;
         Controllers::MotionController& motionController;
         Controllers::SimpleWeatherService& weatherService;
+        Controllers::PraxiomService& praxiomService;
 
         lv_task_t* taskRefresh;
         Widgets::StatusIcons statusIcons;
@@ -102,7 +105,8 @@ namespace Pinetime {
                                              controllers.settingsController,
                                              controllers.heartRateController,
                                              controllers.motionController,
-                                             *controllers.weatherController);
+                                             *controllers.weatherController,
+                                             controllers.nimbleController->GetPraxiomService());
       };
 
       static bool IsAvailable(Pinetime::Controllers::FS& /*filesystem*/) {
