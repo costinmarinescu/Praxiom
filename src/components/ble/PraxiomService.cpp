@@ -10,33 +10,13 @@
 
 using namespace Pinetime::Controllers;
 
-PraxiomService::PraxiomService()
-  : characteristicDefinition {
-      {
-        // Write characteristic - receives Bio-Age from mobile app
-        .uuid = &writeCharUuid.u,
-        .access_cb = OnPraxiomWriteCallback,
-        .arg = this,  // CRITICAL: passes 'this' pointer to static callback
-        .flags = BLE_GATT_CHR_F_WRITE
-      },
-      {
-        // Notify characteristic - sends Bio-Age updates to mobile app
-        .uuid = &notifyCharUuid.u,
-        .access_cb = nullptr,  // Read-only for notifications
-        .arg = this,
-        .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY,
-        .val_handle = &notifyCharHandle
-      },
-      {0}  // NULL TERMINATOR - DO NOT FORGET
-    },
-    serviceDefinition {
-      {
-        .type = BLE_GATT_SVC_TYPE_PRIMARY,
-        .uuid = &serviceUuid.u,
-        .characteristics = characteristicDefinition
-      },
-      {0}  // NULL TERMINATOR - DO NOT FORGET
-    } {
+// Global callback function (like SimpleWeatherService)
+int PraxiomCallback(uint16_t /*conn_handle*/, uint16_t /*attr_handle*/, struct ble_gatt_access_ctxt* ctxt, void* arg) {
+  return static_cast<Pinetime::Controllers::PraxiomService*>(arg)->OnCommand(ctxt);
+}
+
+PraxiomService::PraxiomService() {
+  // Constructor is now minimal - arrays initialized in header
 }
 
 void PraxiomService::Init() {
@@ -46,32 +26,30 @@ void PraxiomService::Init() {
   NRF_LOG_INFO("PraxiomService initialized");
 }
 
-int PraxiomService::OnPraxiomWriteCallback(uint16_t conn_handle,
-                                           uint16_t attr_handle,
-                                           struct ble_gatt_access_ctxt* ctxt,
-                                           void* arg) {
-  auto service = static_cast<PraxiomService*>(arg);
-  return service->OnPraxiomWrite(conn_handle, attr_handle, ctxt);
-}
-
-int PraxiomService::OnPraxiomWrite(uint16_t /*conn_handle*/,
-                                  uint16_t /*attr_handle*/,
-                                  struct ble_gatt_access_ctxt* ctxt) {
+int PraxiomService::OnCommand(struct ble_gatt_access_ctxt* ctxt) {
   if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
     // Extract 4 bytes for uint32_t age
     if (OS_MBUF_PKTLEN(ctxt->om) == sizeof(uint32_t)) {
       uint32_t receivedAge = 0;
       os_mbuf_copydata(ctxt->om, 0, sizeof(uint32_t), &receivedAge);
-      basePraxiomAge = receivedAge;
-      NRF_LOG_INFO("BasePraxiomAge received from app: %lu", basePraxiomAge);
+      
+      // Sanity check: reasonable age range (18-120)
+      if (receivedAge >= 18 && receivedAge <= 120) {
+        basePraxiomAge = receivedAge;
+        NRF_LOG_INFO("BasePraxiomAge received from app: %lu", basePraxiomAge);
+      } else {
+        NRF_LOG_WARNING("Received invalid age: %lu (ignoring)", receivedAge);
+      }
     }
   }
   return 0;
 }
 
 void PraxiomService::SetBasePraxiomAge(uint32_t age) {
-  basePraxiomAge = age;
-  NRF_LOG_INFO("BasePraxiomAge set to: %lu", basePraxiomAge);
+  if (age >= 18 && age <= 120) {
+    basePraxiomAge = age;
+    NRF_LOG_INFO("BasePraxiomAge set to: %lu", basePraxiomAge);
+  }
 }
 
 uint32_t PraxiomService::GetBasePraxiomAge() const {
