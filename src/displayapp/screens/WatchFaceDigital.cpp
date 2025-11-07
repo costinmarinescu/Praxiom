@@ -256,6 +256,13 @@ void WatchFaceDigital::Refresh() {
   if (bleAge >= 18 && bleAge <= 120 && bleAge != static_cast<uint32_t>(basePraxiomAge)) {
     basePraxiomAge = static_cast<int>(bleAge);
     lastSyncTime = dateTimeController.CurrentDateTime().time_since_epoch().count();
+    
+    // INSTANT UPDATE: Show new age immediately (instead of waiting for next minute)
+    int praxiomAge = GetCurrentPraxiomAge();
+    lv_label_set_text_fmt(labelPraxiomAgeNumber, "%d", praxiomAge);
+    lv_color_t ageColor = GetPraxiomAgeColor(praxiomAge, basePraxiomAge);
+    lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, ageColor);
+    lv_obj_realign(labelPraxiomAgeNumber);
   }
 
   // Update Praxiom Age every minute with dynamic color
