@@ -120,7 +120,7 @@ namespace Pinetime {
       void PersistBond(struct ble_gap_conn_desc& desc);
       void RestoreBond();
 
-      static constexpr const char* deviceName = "Praxiom";  // Changed from InfiniTime
+      static constexpr const char* deviceName = "InfiniTime";
       Pinetime::System::SystemTask& systemTask;
       Pinetime::Controllers::Ble& bleController;
       DateTime& dateTimeController;
