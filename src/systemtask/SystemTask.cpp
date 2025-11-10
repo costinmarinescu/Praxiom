@@ -113,7 +113,6 @@ void SystemTask::Work() {
   spiNorFlash.Wakeup();
 
   fs.Init();
-  praxiomService.Init();
   nimbleController.Init();
 
   twiMaster.Init();
