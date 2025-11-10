@@ -36,7 +36,7 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
     weatherService {weatherService},
     praxiomService {praxiomService},
     statusIcons(batteryController, bleController, alarmController),  // FIXED: StatusIcons needs all 3 arguments!
-    basePraxiomAge(53),  // Demo age - will be replaced when phone app connects
+    basePraxiomAge(0),
     lastSyncTime(0) {
 
   // Create Praxiom brand gradient background (Orange/Amber to Teal/Cyan)
