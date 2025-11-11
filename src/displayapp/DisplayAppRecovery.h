@@ -5,7 +5,6 @@
 #include <utility>
 
 #include "displayapp/screens/Screen.h"
-#include "displayapp/screens/ErrorScreen.h"
 #include "displayapp/LittleVgl.h"
 #include "components/ble/NotificationManager.h"
 #include "components/ble/BleController.h"
@@ -31,7 +30,7 @@ namespace Pinetime {
     class SimpleWeatherService;
     class MusicService;
     class NavigationService;
-    class PraxiomService;  // *** ADDED FOR PRAXIOM ***
+    class PraxiomService;
   }
 
   namespace Components {
