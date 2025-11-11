@@ -109,6 +109,7 @@ Pinetime::Controllers::StopWatchController stopWatchController;
 Pinetime::Controllers::AlarmController alarmController {dateTimeController, fs};
 Pinetime::Controllers::TouchHandler touchHandler;
 Pinetime::Controllers::ButtonHandler buttonHandler;
+Pinetime::Controllers::PraxiomService praxiomService;
 Pinetime::Controllers::BrightnessController brightnessController {};
 
 Pinetime::Applications::DisplayApp displayApp(lcd,
