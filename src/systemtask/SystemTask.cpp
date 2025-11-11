@@ -142,7 +142,9 @@ void SystemTask::Work() {
   displayApp.Register(&nimbleController.weather());
   displayApp.Register(&nimbleController.music());
   displayApp.Register(&nimbleController.navigation());
+  #ifndef PINETIME_IS_RECOVERY
   displayApp.Register(&nimbleController.GetPraxiomService());
+  #endif
   displayApp.Start(bootError);
 
   heartRateSensor.Init();
