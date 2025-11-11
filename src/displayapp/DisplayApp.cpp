@@ -126,6 +126,7 @@ DisplayApp::DisplayApp(Drivers::St7789& lcd,
                  this,
                  lvgl,
                  nullptr,
+                 nullptr,
                  nullptr} {
 }
 
@@ -734,6 +735,9 @@ void DisplayApp::Register(Pinetime::Controllers::NimbleController* nimbleControl
   this->controllers.nimbleController = nimbleController;
 }
 
+void DisplayApp::Register(Pinetime::Controllers::PraxiomService* praxiomService) {
+  this->controllers.praxiomService = praxiomService;
+}
 
 void DisplayApp::ApplyBrightness() {
   auto brightness = settingsController.GetBrightness();
