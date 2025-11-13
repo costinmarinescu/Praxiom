@@ -44,12 +44,17 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
     basePraxiomAge(0),
     lastSyncTime(0) {
 
+  // ✅ FIX: Read initial value from PraxiomService before creating UI
+  uint32_t initialAge = praxiomService.GetBasePraxiomAge();
+  if (initialAge >= 18 && initialAge <= 120) {
+    basePraxiomAge = static_cast<int>(initialAge);
+  }
+
   // Create Praxiom brand gradient background (Orange/Amber to Teal/Cyan)
   lv_obj_t* background_gradient = lv_obj_create(lv_scr_act(), nullptr);
   lv_obj_set_size(background_gradient, 240, 240);
   lv_obj_set_pos(background_gradient, 0, 0);
   lv_obj_set_style_local_radius(background_gradient, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, 0);
-  // Praxiom brand colors: Orange/Amber (#CC6600) to Teal (#008B8B)
   lv_obj_set_style_local_bg_color(background_gradient, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xCC6600));
   lv_obj_set_style_local_bg_grad_color(background_gradient, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x008B8B));
   lv_obj_set_style_local_bg_grad_dir(background_gradient, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, LV_GRAD_DIR_VER);
@@ -60,15 +65,25 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
 
   // Create and position Praxiom Age label (text) - WHITE
   labelPraxiomAge = lv_label_create(lv_scr_act(), nullptr);
-  lv_label_set_text_static(labelPraxiomAge, "TEST 123");
+  lv_label_set_text_static(labelPraxiomAge, "Praxiom Age");  // Changed back from TEST123
   lv_obj_set_style_local_text_font(labelPraxiomAge, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_bold_20);
   lv_obj_set_style_local_text_color(labelPraxiomAge, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));
   lv_obj_align(labelPraxiomAge, lv_scr_act(), LV_ALIGN_CENTER, 0, -80);
 
-  // Create Praxiom Age number with SMALL font initially (for "---")
+  // ✅ FIX: Create label with appropriate state based on basePraxiomAge
   labelPraxiomAgeNumber = lv_label_create(lv_scr_act(), nullptr);
-  lv_label_set_text_static(labelPraxiomAgeNumber, "53");  // HARDCODED TEST
-  lv_obj_set_style_local_text_font(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_extrabold_compressed);  // LARGE FONT
+  
+  if (basePraxiomAge > 0) {
+    // We have data - display with LARGE font
+    lv_label_set_text_fmt(labelPraxiomAgeNumber, "%d", basePraxiomAge);
+    lv_obj_set_style_local_text_font(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_extrabold_compressed);
+  } else {
+    // No data - show placeholder with SMALL font
+    lv_label_set_text_static(labelPraxiomAgeNumber, "---");
+    lv_obj_set_style_local_text_font(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_bold_20);
+  }
+  
+  lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));
   lv_obj_align(labelPraxiomAgeNumber, lv_scr_act(), LV_ALIGN_CENTER, 0, -10);
 
   // Time label - BLACK
@@ -198,7 +213,7 @@ void WatchFaceDigital::Refresh() {
     lv_obj_realign(labelPraxiomAgeNumber);
   }
 
-  // IMPROVED: Update every second for immediate feedback
+  // Update display every second for immediate feedback
   static bool firstRun = true;
   static uint8_t lastSecond = 255;
   uint8_t currentSecond = dateTimeController.Seconds();
