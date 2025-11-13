@@ -1,3 +1,10 @@
+/*  FIXED VERSION OF WatchFaceDigital.cpp
+    
+    KEY FIX: jetbrains_mono_extrabold_compressed font only contains digits 0-9
+    Solution: Use jetbrains_mono_bold_20 for "---" placeholder, switch to 
+    extrabold_compressed when displaying actual age number
+*/
+
 #include "displayapp/screens/WatchFaceDigital.h"
 
 #include <lvgl/lvgl.h>
@@ -16,6 +23,11 @@
 #include "components/settings/Settings.h"
 
 using namespace Pinetime::Applications::Screens;
+
+// ✅ FIX: Declare both fonts we'll use
+extern lv_font_t jetbrains_mono_bold_20;
+extern lv_font_t jetbrains_mono_extrabold_compressed;
+extern lv_font_t jetbrains_mono_42;
 
 WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
                                    const Controllers::Battery& batteryController,
@@ -36,7 +48,7 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
     weatherService {weatherService},
     praxiomService {praxiomService},
     statusIcons(batteryController, bleController, alarmController),
-    basePraxiomAge(0),  // ✅ FIXED: Initialize to 0 (no data)
+    basePraxiomAge(0),
     lastSyncTime(0) {
 
   // Create Praxiom brand gradient background (Orange/Amber to Teal/Cyan)
@@ -44,7 +56,6 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
   lv_obj_set_size(background_gradient, 240, 240);
   lv_obj_set_pos(background_gradient, 0, 0);
   lv_obj_set_style_local_radius(background_gradient, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, 0);
-  // Praxiom brand colors: Orange/Amber (#CC6600) to Teal (#008B8B)
   lv_obj_set_style_local_bg_color(background_gradient, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xCC6600));
   lv_obj_set_style_local_bg_grad_color(background_gradient, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x008B8B));
   lv_obj_set_style_local_bg_grad_dir(background_gradient, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, LV_GRAD_DIR_VER);
@@ -53,21 +64,22 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
   statusIcons.Create();
   lv_obj_align(statusIcons.GetObject(), lv_scr_act(), LV_ALIGN_IN_TOP_RIGHT, -8, 0);
 
-  // Create and position Praxiom Age label (text) - WHITE to match the number
+  // Create and position Praxiom Age label (text) - WHITE
   labelPraxiomAge = lv_label_create(lv_scr_act(), nullptr);
   lv_label_set_text_static(labelPraxiomAge, "Praxiom Age");
   lv_obj_set_style_local_text_font(labelPraxiomAge, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_bold_20);
-  lv_obj_set_style_local_text_color(labelPraxiomAge, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));  // WHITE
+  lv_obj_set_style_local_text_color(labelPraxiomAge, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));
   lv_obj_align(labelPraxiomAge, lv_scr_act(), LV_ALIGN_CENTER, 0, -80);
 
-  // ✅ FIXED: Create Praxiom Age number - Show "SYNC" until data arrives
+  // ✅ FIX: Create Praxiom Age number with SMALLER font initially (for "---")
+  // We'll switch to the large font when we display actual numbers
   labelPraxiomAgeNumber = lv_label_create(lv_scr_act(), nullptr);
-  lv_label_set_text_static(labelPraxiomAgeNumber, "SYNC");  // ✅ Changed from "53"
-  lv_obj_set_style_local_text_font(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_extrabold_compressed);
+  lv_label_set_text_static(labelPraxiomAgeNumber, "---");
+  lv_obj_set_style_local_text_font(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_bold_20);
   lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));
   lv_obj_align(labelPraxiomAgeNumber, lv_scr_act(), LV_ALIGN_CENTER, 0, -10);
 
-  // Time label - BLACK (using larger font for better visibility)
+  // Time label - BLACK
   label_time = lv_label_create(lv_scr_act(), nullptr);
   lv_obj_set_style_local_text_font(label_time, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_42);
   lv_obj_set_style_local_text_color(label_time, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x000000));
@@ -117,36 +129,20 @@ WatchFaceDigital::~WatchFaceDigital() {
   lv_obj_clean(lv_scr_act());
 }
 
-// Update base Praxiom Age from phone app (called via BLE)
 void WatchFaceDigital::UpdateBasePraxiomAge(int age) {
   basePraxiomAge = age;
   lastSyncTime = dateTimeController.CurrentDateTime().time_since_epoch().count();
 }
 
-// ✅ FIXED: Removed real-time adjustments - just return the authoritative value from app
-// The mobile app has already calculated biological age from comprehensive biomarker analysis
-// including oral health, systemic health, AND fitness data (heart rate, steps, SpO2).
-// The watch should DISPLAY this value, not recalculate it.
 int WatchFaceDigital::GetCurrentPraxiomAge() {
-  // Simply return the base age received from mobile app
-  // No adjustments needed - app's calculation is authoritative
   return basePraxiomAge;
 }
 
-// ✅ UPDATED: Color based on whether we have data, not on adjustments
 lv_color_t WatchFaceDigital::GetPraxiomAgeColor(int currentAge, int baseAge) {
-  // Suppress unused parameter warnings
   (void)currentAge;
   (void)baseAge;
-  
-  // For now, just return white - color coding can be enhanced later
-  // to show deviation from chronological age if we add that to BLE protocol
   return lv_color_hex(0xFFFFFF);
 }
-
-// NOTE: The CalculateRealtimeAdjustment() function has been removed
-// as it's no longer needed. Real-time HR/step adjustments were causing
-// the display to show incorrect values that didn't match the app.
 
 void WatchFaceDigital::Refresh() {
   statusIcons.Update();
@@ -160,8 +156,6 @@ void WatchFaceDigital::Refresh() {
   if (currentDateTime.IsUpdated()) {
     uint8_t hour = dateTimeController.Hours();
     uint8_t minute = dateTimeController.Minutes();
-
-    // Update time
     lv_label_set_text_fmt(label_time, "%02d:%02d", hour, minute);
 
     currentDate = std::chrono::time_point_cast<std::chrono::days>(currentDateTime.Get());
@@ -195,37 +189,38 @@ void WatchFaceDigital::Refresh() {
     lv_obj_realign(stepValue);
   }
 
-  // ✅ FIXED: Check if Bio-Age was updated from mobile app via BLE
+  // ✅ FIX: Check if Bio-Age was updated from mobile app via BLE
   uint32_t bleAge = praxiomService.GetBasePraxiomAge();
-  // Only accept reasonable age values (18-120) and ignore 0 (no data)
   if (bleAge >= 18 && bleAge <= 120 && bleAge != static_cast<uint32_t>(basePraxiomAge)) {
     basePraxiomAge = static_cast<int>(bleAge);
     lastSyncTime = dateTimeController.CurrentDateTime().time_since_epoch().count();
     
-    // INSTANT UPDATE: Show new age immediately
+    // INSTANT UPDATE with LARGE font for number
     int praxiomAge = GetCurrentPraxiomAge();
+    lv_obj_set_style_local_text_font(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_extrabold_compressed);
     lv_label_set_text_fmt(labelPraxiomAgeNumber, "%d", praxiomAge);
     lv_color_t ageColor = GetPraxiomAgeColor(praxiomAge, basePraxiomAge);
     lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, ageColor);
     lv_obj_realign(labelPraxiomAgeNumber);
   }
 
-  // ✅ FIXED: Update display every minute, showing "SYNC" if no data yet
+  // ✅ FIX: Update display every minute with proper font switching
   static uint8_t lastMinute = 0;
   uint8_t currentMinute = dateTimeController.Minutes();
   
   if (currentMinute != lastMinute) {
     if (basePraxiomAge > 0) {
-      // We have valid data from app - display it
+      // We have valid data - display it with LARGE font
       int praxiomAge = GetCurrentPraxiomAge();
+      lv_obj_set_style_local_text_font(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_extrabold_compressed);
       lv_label_set_text_fmt(labelPraxiomAgeNumber, "%d", praxiomAge);
       
-      // Set color (currently just white, but can be enhanced)
       lv_color_t ageColor = GetPraxiomAgeColor(praxiomAge, basePraxiomAge);
       lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, ageColor);
     } else {
-      // No data yet - show sync indicator
-      lv_label_set_text_static(labelPraxiomAgeNumber, "SYNC");
+      // No data yet - show placeholder with SMALL font
+      lv_obj_set_style_local_text_font(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_bold_20);
+      lv_label_set_text_static(labelPraxiomAgeNumber, "---");
       lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));
     }
     
