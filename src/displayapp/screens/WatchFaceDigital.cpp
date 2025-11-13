@@ -67,9 +67,8 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
 
   // Create Praxiom Age number with SMALL font initially (for "---")
   labelPraxiomAgeNumber = lv_label_create(lv_scr_act(), nullptr);
-  lv_label_set_text_static(labelPraxiomAgeNumber, "---");
-  lv_obj_set_style_local_text_font(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_bold_20);
-  lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));
+  lv_label_set_text_static(labelPraxiomAgeNumber, "53");  // HARDCODED TEST
+  lv_obj_set_style_local_text_font(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_extrabold_compressed);  // LARGE FONT
   lv_obj_align(labelPraxiomAgeNumber, lv_scr_act(), LV_ALIGN_CENTER, 0, -10);
 
   // Time label - BLACK
