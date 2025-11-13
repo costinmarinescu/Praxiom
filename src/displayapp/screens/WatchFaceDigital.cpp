@@ -35,8 +35,8 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
     motionController {motionController},
     weatherService {weatherService},
     praxiomService {praxiomService},
-    statusIcons(batteryController, bleController, alarmController),  // FIXED: StatusIcons needs all 3 arguments!
-    basePraxiomAge(0),
+    statusIcons(batteryController, bleController, alarmController),
+    basePraxiomAge(0),  // ✅ FIXED: Initialize to 0 (no data)
     lastSyncTime(0) {
 
   // Create Praxiom brand gradient background (Orange/Amber to Teal/Cyan)
@@ -60,16 +60,16 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
   lv_obj_set_style_local_text_color(labelPraxiomAge, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));  // WHITE
   lv_obj_align(labelPraxiomAge, lv_scr_act(), LV_ALIGN_CENTER, 0, -80);
 
-  // Create Praxiom Age number - BOLD large digits - WHITE (neutral color)
+  // ✅ FIXED: Create Praxiom Age number - Show "SYNC" until data arrives
   labelPraxiomAgeNumber = lv_label_create(lv_scr_act(), nullptr);
-  lv_label_set_text_static(labelPraxiomAgeNumber, "53");  // Initial demo value
-  lv_obj_set_style_local_text_font(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_extrabold_compressed);  // BOLD font
-  lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));  // Start with white
+  lv_label_set_text_static(labelPraxiomAgeNumber, "SYNC");  // ✅ Changed from "53"
+  lv_obj_set_style_local_text_font(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_extrabold_compressed);
+  lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));
   lv_obj_align(labelPraxiomAgeNumber, lv_scr_act(), LV_ALIGN_CENTER, 0, -10);
 
   // Time label - BLACK (using larger font for better visibility)
   label_time = lv_label_create(lv_scr_act(), nullptr);
-  lv_obj_set_style_local_text_font(label_time, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_42);  // Medium font
+  lv_obj_set_style_local_text_font(label_time, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_42);
   lv_obj_set_style_local_text_color(label_time, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x000000));
   lv_label_set_text_static(label_time, "00:00");
   lv_obj_align(label_time, lv_scr_act(), LV_ALIGN_CENTER, 0, 55);
@@ -123,84 +123,26 @@ void WatchFaceDigital::UpdateBasePraxiomAge(int age) {
   lastSyncTime = dateTimeController.CurrentDateTime().time_since_epoch().count();
 }
 
-// Calculate real-time adjustment based on watch sensors
-float WatchFaceDigital::CalculateRealtimeAdjustment() {
-  float adjustment = 0.0f;
-  
-  // Get current sensor data
-  uint8_t currentHeartRate = heartRateController.HeartRate();
-  uint32_t currentSteps = motionController.NbSteps();
-  
-  // Heart rate deviation adjustment (-1 to +2 years based on HR)
-  if (currentHeartRate > 0) {
-    if (currentHeartRate < 50 || currentHeartRate > 90) {
-      // Poor resting HR
-      adjustment += 1.5f;
-    } else if (currentHeartRate >= 50 && currentHeartRate <= 60) {
-      // Excellent resting HR
-      adjustment -= 0.5f;
-    } else if (currentHeartRate >= 61 && currentHeartRate <= 70) {
-      // Good resting HR
-      adjustment -= 0.2f;
-    } else if (currentHeartRate >= 71 && currentHeartRate <= 80) {
-      // Fair resting HR
-      adjustment += 0.3f;
-    } else {
-      // Suboptimal resting HR
-      adjustment += 0.8f;
-    }
-  }
-  
-  // Daily activity adjustment (-1 to +1 year based on steps)
-  if (currentSteps >= 10000) {
-    adjustment -= 0.8f;  // Excellent activity
-  } else if (currentSteps >= 8000) {
-    adjustment -= 0.3f;  // Good activity
-  } else if (currentSteps >= 5000) {
-    adjustment += 0.2f;  // Moderate activity
-  } else if (currentSteps >= 3000) {
-    adjustment += 0.5f;  // Low activity
-  } else {
-    adjustment += 1.0f;  // Sedentary
-  }
-  
-  // Cap adjustment to reasonable range
-  if (adjustment < -2.0f) adjustment = -2.0f;
-  if (adjustment > 3.0f) adjustment = 3.0f;
-  
-  return adjustment;
-}
-
-// Calculate final Praxiom Age
+// ✅ FIXED: Removed real-time adjustments - just return the authoritative value from app
+// The mobile app has already calculated biological age from comprehensive biomarker analysis
+// including oral health, systemic health, AND fitness data (heart rate, steps, SpO2).
+// The watch should DISPLAY this value, not recalculate it.
 int WatchFaceDigital::GetCurrentPraxiomAge() {
-  // Demo mode: basePraxiomAge = 53 until phone app connects and updates it
-  // Real mode: basePraxiomAge updated by phone app via UpdateBasePraxiomAge()
-  
-  float adjustment = CalculateRealtimeAdjustment();
-  int finalAge = basePraxiomAge + (int)adjustment;
-  
-  // Ensure reasonable bounds (18-120)
-  if (finalAge < 18) finalAge = 18;
-  if (finalAge > 120) finalAge = 120;
-  
-  return finalAge;
+  // Simply return the base age received from mobile app
+  // No adjustments needed - app's calculation is authoritative
+  return basePraxiomAge;
 }
 
-// Get color based on Praxiom Age difference from base age
+// ✅ UPDATED: Color based on whether we have data, not on adjustments
 lv_color_t WatchFaceDigital::GetPraxiomAgeColor(int currentAge, int baseAge) {
-  int difference = currentAge - baseAge;
-  
-  if (difference < -2) {
-    // More than 2 years younger - GREEN (excellent health)
-    return lv_color_hex(0x00FF00);
-  } else if (difference > 2) {
-    // More than 2 years older - RED (poor health)
-    return lv_color_hex(0xFF0000);
-  } else {
-    // Within ±2 years - WHITE (neutral/good health)
-    return lv_color_hex(0xFFFFFF);
-  }
+  // For now, just return white - color coding can be enhanced later
+  // to show deviation from chronological age if we add that to BLE protocol
+  return lv_color_hex(0xFFFFFF);
 }
+
+// NOTE: The CalculateRealtimeAdjustment() function has been removed
+// as it's no longer needed. Real-time HR/step adjustments were causing
+// the display to show incorrect values that didn't match the app.
 
 void WatchFaceDigital::Refresh() {
   statusIcons.Update();
@@ -222,7 +164,6 @@ void WatchFaceDigital::Refresh() {
     if (currentDate.IsUpdated()) {
       uint16_t year = dateTimeController.Year();
       uint8_t day = dateTimeController.Day();
-      // FIXED: Added month name to date display
       lv_label_set_text_fmt(label_date,
                             "%s %d %s %d",
                             dateTimeController.DayOfWeekShortToString(),
@@ -250,14 +191,14 @@ void WatchFaceDigital::Refresh() {
     lv_obj_realign(stepValue);
   }
 
-  // Check if Bio-Age was updated from mobile app via BLE
+  // ✅ FIXED: Check if Bio-Age was updated from mobile app via BLE
   uint32_t bleAge = praxiomService.GetBasePraxiomAge();
-  // SAFE: Only accept reasonable age values (18-120)
+  // Only accept reasonable age values (18-120) and ignore 0 (no data)
   if (bleAge >= 18 && bleAge <= 120 && bleAge != static_cast<uint32_t>(basePraxiomAge)) {
     basePraxiomAge = static_cast<int>(bleAge);
     lastSyncTime = dateTimeController.CurrentDateTime().time_since_epoch().count();
     
-    // INSTANT UPDATE: Show new age immediately (instead of waiting for next minute)
+    // INSTANT UPDATE: Show new age immediately
     int praxiomAge = GetCurrentPraxiomAge();
     lv_label_set_text_fmt(labelPraxiomAgeNumber, "%d", praxiomAge);
     lv_color_t ageColor = GetPraxiomAgeColor(praxiomAge, basePraxiomAge);
@@ -265,23 +206,26 @@ void WatchFaceDigital::Refresh() {
     lv_obj_realign(labelPraxiomAgeNumber);
   }
 
-  // Update Praxiom Age every minute with dynamic color
+  // ✅ FIXED: Update display every minute, showing "SYNC" if no data yet
   static uint8_t lastMinute = 0;
   uint8_t currentMinute = dateTimeController.Minutes();
   
   if (currentMinute != lastMinute) {
-    int praxiomAge = GetCurrentPraxiomAge();
-    
-    // Update the number
-    lv_label_set_text_fmt(labelPraxiomAgeNumber, "%d", praxiomAge);
-    
-    // Update the color based on difference from base age
-    lv_color_t ageColor = GetPraxiomAgeColor(praxiomAge, basePraxiomAge);
-    lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, ageColor);
+    if (basePraxiomAge > 0) {
+      // We have valid data from app - display it
+      int praxiomAge = GetCurrentPraxiomAge();
+      lv_label_set_text_fmt(labelPraxiomAgeNumber, "%d", praxiomAge);
+      
+      // Set color (currently just white, but can be enhanced)
+      lv_color_t ageColor = GetPraxiomAgeColor(praxiomAge, basePraxiomAge);
+      lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, ageColor);
+    } else {
+      // No data yet - show sync indicator
+      lv_label_set_text_static(labelPraxiomAgeNumber, "SYNC");
+      lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));
+    }
     
     lv_obj_realign(labelPraxiomAgeNumber);
     lastMinute = currentMinute;
-    
-    // TODO: Send updated Praxiom Age back to phone via BLE every 10 minutes
   }
 }
