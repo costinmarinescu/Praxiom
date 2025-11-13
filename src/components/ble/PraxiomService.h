@@ -71,7 +71,10 @@ namespace Pinetime {
 
       uint16_t eventHandle {};
 
-      uint32_t basePraxiomAge = 53; // Default demo value
+      // ✅ FIXED: Changed from 53 to 0 to indicate "no data received yet"
+      // 0 = waiting for mobile app to send first biological age value
+      // This matches the watchface initialization and eliminates confusion
+      uint32_t basePraxiomAge = 0;
     };
   }
 }
