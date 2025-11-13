@@ -135,6 +135,10 @@ int WatchFaceDigital::GetCurrentPraxiomAge() {
 
 // ✅ UPDATED: Color based on whether we have data, not on adjustments
 lv_color_t WatchFaceDigital::GetPraxiomAgeColor(int currentAge, int baseAge) {
+  // Suppress unused parameter warnings
+  (void)currentAge;
+  (void)baseAge;
+  
   // For now, just return white - color coding can be enhanced later
   // to show deviation from chronological age if we add that to BLE protocol
   return lv_color_hex(0xFFFFFF);
