@@ -19,7 +19,6 @@ using namespace Pinetime::Applications::Screens;
 
 // Declare the fonts we need
 extern lv_font_t jetbrains_mono_bold_20;
-extern lv_font_t jetbrains_mono_extrabold_compressed;
 extern lv_font_t jetbrains_mono_42;
 
 WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
@@ -44,11 +43,15 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
     basePraxiomAge(0),
     lastSyncTime(0) {
 
-  // ✅ FIX: Read initial value from PraxiomService before creating UI
+  // ✅ DIAGNOSTIC: Read initial value from PraxiomService
   uint32_t initialAge = praxiomService.GetBasePraxiomAge();
   if (initialAge >= 18 && initialAge <= 120) {
     basePraxiomAge = static_cast<int>(initialAge);
   }
+  
+  // Log the initial age for debugging
+  NRF_LOG_INFO("🔍 DIAGNOSTIC: Initial Praxiom Age from service: %d", initialAge);
+  NRF_LOG_INFO("🔍 DIAGNOSTIC: basePraxiomAge set to: %d", basePraxiomAge);
 
   // Create Praxiom brand gradient background (Orange/Amber to Teal/Cyan)
   lv_obj_t* background_gradient = lv_obj_create(lv_scr_act(), nullptr);
@@ -65,25 +68,28 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
 
   // Create and position Praxiom Age label (text) - WHITE
   labelPraxiomAge = lv_label_create(lv_scr_act(), nullptr);
-  lv_label_set_text_static(labelPraxiomAge, "Praxiom Age");  // Changed back from TEST123
+  lv_label_set_text_static(labelPraxiomAge, "Praxiom Age");
   lv_obj_set_style_local_text_font(labelPraxiomAge, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_bold_20);
   lv_obj_set_style_local_text_color(labelPraxiomAge, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));
   lv_obj_align(labelPraxiomAge, lv_scr_act(), LV_ALIGN_CENTER, 0, -80);
 
-  // ✅ FIX: Create label with appropriate state based on basePraxiomAge
+  // ✅ DIAGNOSTIC: Create label that ALWAYS shows a number with regular font
   labelPraxiomAgeNumber = lv_label_create(lv_scr_act(), nullptr);
   
   if (basePraxiomAge > 0) {
-    // We have data - display with LARGE font
-    lv_label_set_text_fmt(labelPraxiomAgeNumber, "%d", basePraxiomAge);
-    lv_obj_set_style_local_text_font(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_extrabold_compressed);
+    // We have data - display it
+    char buffer[16];
+    snprintf(buffer, sizeof(buffer), "%d", basePraxiomAge);
+    lv_label_set_text(labelPraxiomAgeNumber, buffer);
+    lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x00FF00));
   } else {
-    // No data - show placeholder with SMALL font
-    lv_label_set_text_static(labelPraxiomAgeNumber, "");  // Empty instead of "---"
-    lv_obj_set_style_local_text_font(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_bold_20);
+    // No data - show "0" to indicate waiting
+    lv_label_set_text_static(labelPraxiomAgeNumber, "0");
+    lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));
   }
   
-  lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));
+  // ALWAYS use jetbrains_mono_42 - the time font that definitely works
+  lv_obj_set_style_local_text_font(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_42);
   lv_obj_align(labelPraxiomAgeNumber, lv_scr_act(), LV_ALIGN_CENTER, 0, -10);
 
   // Time label - BLACK
@@ -198,18 +204,27 @@ void WatchFaceDigital::Refresh() {
     lv_obj_realign(stepValue);
   }
 
-  // Check if Bio-Age was updated from mobile app via BLE
+  // ✅ DIAGNOSTIC: Check if Bio-Age was updated from mobile app via BLE
   uint32_t bleAge = praxiomService.GetBasePraxiomAge();
+  
+  // Log every time we check (happens frequently, so you'll see updates)
+  static uint32_t lastLoggedAge = 0;
+  if (bleAge != lastLoggedAge) {
+    NRF_LOG_INFO("🔍 DIAGNOSTIC: BLE Age changed: %d -> %d", lastLoggedAge, bleAge);
+    lastLoggedAge = bleAge;
+  }
+  
   if (bleAge >= 18 && bleAge <= 120 && bleAge != static_cast<uint32_t>(basePraxiomAge)) {
+    NRF_LOG_INFO("✅ DIAGNOSTIC: Updating display! Old: %d, New: %d", basePraxiomAge, bleAge);
+    
     basePraxiomAge = static_cast<int>(bleAge);
     lastSyncTime = dateTimeController.CurrentDateTime().time_since_epoch().count();
     
-    // INSTANT UPDATE with LARGE font for number
-    int praxiomAge = GetCurrentPraxiomAge();
-    lv_obj_set_style_local_text_font(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_extrabold_compressed);
-    lv_label_set_text_fmt(labelPraxiomAgeNumber, "%d", praxiomAge);
-    lv_color_t ageColor = GetPraxiomAgeColor(praxiomAge, basePraxiomAge);
-    lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, ageColor);
+    // INSTANT UPDATE with reliable font
+    char buffer[16];
+    snprintf(buffer, sizeof(buffer), "%d", basePraxiomAge);
+    lv_label_set_text(labelPraxiomAgeNumber, buffer);
+    lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x00FF00));
     lv_obj_realign(labelPraxiomAgeNumber);
   }
 
@@ -220,17 +235,14 @@ void WatchFaceDigital::Refresh() {
   
   if (firstRun || currentSecond != lastSecond) {
     if (basePraxiomAge > 0) {
-      // We have valid data - display with LARGE font
-      int praxiomAge = GetCurrentPraxiomAge();
-      lv_obj_set_style_local_text_font(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_extrabold_compressed);
-      lv_label_set_text_fmt(labelPraxiomAgeNumber, "%d", praxiomAge);
-      
-      lv_color_t ageColor = GetPraxiomAgeColor(praxiomAge, basePraxiomAge);
-      lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, ageColor);
+      // We have valid data - display with regular font
+      char buffer[16];
+      snprintf(buffer, sizeof(buffer), "%d", basePraxiomAge);
+      lv_label_set_text(labelPraxiomAgeNumber, buffer);
+      lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x00FF00));
     } else {
-      // No data yet - show placeholder with SMALL font
-      lv_obj_set_style_local_text_font(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_bold_20);
-      lv_label_set_text_static(labelPraxiomAgeNumber, "");  // Empty instead of "---"
+      // No data yet - show "0" 
+      lv_label_set_text_static(labelPraxiomAgeNumber, "0");
       lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));
     }
     
