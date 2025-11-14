@@ -79,7 +79,7 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
     lv_obj_set_style_local_text_font(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_extrabold_compressed);
   } else {
     // No data - show placeholder with SMALL font
-    lv_label_set_text_static(labelPraxiomAgeNumber, "---");
+    lv_label_set_text_static(labelPraxiomAgeNumber, "");  // Empty instead of "---"
     lv_obj_set_style_local_text_font(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_bold_20);
   }
   
@@ -230,7 +230,7 @@ void WatchFaceDigital::Refresh() {
     } else {
       // No data yet - show placeholder with SMALL font
       lv_obj_set_style_local_text_font(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_bold_20);
-      lv_label_set_text_static(labelPraxiomAgeNumber, "---");
+      lv_label_set_text_static(labelPraxiomAgeNumber, "");  // Empty instead of "---"
       lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));
     }
     
