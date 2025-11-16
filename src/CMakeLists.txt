@@ -448,6 +448,7 @@ list(APPEND SOURCE_FILES
         components/ble/BleController.cpp
         components/ble/NotificationManager.cpp
         components/ble/PraxiomService.cpp
+        components/praxiom/PraxiomController.cpp
         components/datetime/DateTimeController.cpp
         components/brightness/BrightnessController.cpp
         components/motion/MotionController.cpp
@@ -520,6 +521,7 @@ list(APPEND RECOVERY_SOURCE_FILES
         components/ble/BleController.cpp
         components/ble/NotificationManager.cpp
         components/ble/PraxiomService.cpp
+        components/praxiom/PraxiomController.cpp
         components/datetime/DateTimeController.cpp
         components/brightness/BrightnessController.cpp
         components/motion/MotionController.cpp
