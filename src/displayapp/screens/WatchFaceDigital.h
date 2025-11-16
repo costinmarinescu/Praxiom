@@ -1,23 +1,27 @@
 #pragma once
 
-#include <lvgl/lvgl.h>
+#include <lvgl/src/lv_core/lv_obj.h>
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include "displayapp/screens/Screen.h"
 #include "components/datetime/DateTimeController.h"
-#include "components/ble/BleController.h"
-#include "components/ble/NotificationManager.h"
 #include "components/ble/SimpleWeatherService.h"
-#include "components/settings/Settings.h"
-#include "displayapp/screens/BatteryIcon.h"
+#include "components/ble/BleController.h"
+#include "displayapp/widgets/StatusIcons.h"
 #include "utility/DirtyValue.h"
-#include "displayapp/screens/StatusIcons.h"
+#include "displayapp/apps/Apps.h"
 
 namespace Pinetime {
   namespace Controllers {
+    class Settings;
+    class Battery;
+    class Ble;
+    class AlarmController;
+    class NotificationManager;
     class HeartRateController;
     class MotionController;
-    class PraxiomController;
+    class PraxiomService;
   }
 
   namespace Applications {
@@ -26,66 +30,89 @@ namespace Pinetime {
       class WatchFaceDigital : public Screen {
       public:
         WatchFaceDigital(Controllers::DateTime& dateTimeController,
-                        const Controllers::Battery& batteryController,
-                        const Controllers::Ble& bleController,
-                        Controllers::NotificationManager& notificationManager,
-                        Controllers::Settings& settingsController,
-                        Controllers::HeartRateController& heartRateController,
-                        Controllers::MotionController& motionController,
-                        Controllers::SimpleWeatherService& weatherService,
-                        Controllers::PraxiomController& praxiomController);
-
+                         const Controllers::Battery& batteryController,
+                         const Controllers::Ble& bleController,
+                         const Controllers::AlarmController& alarmController,
+                         Controllers::NotificationManager& notificationManager,
+                         Controllers::Settings& settingsController,
+                         Controllers::HeartRateController& heartRateController,
+                         Controllers::MotionController& motionController,
+                         Controllers::SimpleWeatherService& weather,
+                         Controllers::PraxiomService& praxiomService);
         ~WatchFaceDigital() override;
 
         void Refresh() override;
 
+        // Called by BLE service to update base Praxiom Age from phone
+        void UpdateBasePraxiomAge(int age);
+        
+        // Get current Praxiom Age (for sending back to phone if needed)
+        int GetCurrentPraxiomAge();
+
       private:
-        Utility::DirtyValue<std::chrono::time_point<std::chrono::system_clock, std::chrono::seconds>> currentDateTime {};
+        uint8_t displayedHour = -1;
+        uint8_t displayedMinute = -1;
+
+        Utility::DirtyValue<std::chrono::time_point<std::chrono::system_clock, std::chrono::minutes>> currentDateTime {};
         Utility::DirtyValue<uint32_t> stepCount {};
         Utility::DirtyValue<uint8_t> heartbeat {};
         Utility::DirtyValue<bool> heartbeatRunning {};
         Utility::DirtyValue<bool> notificationState {};
-        using OptCurrentWeather = std::optional<Pinetime::Controllers::SimpleWeatherService::CurrentWeather>;
-        Utility::DirtyValue<OptCurrentWeather> currentWeather {};
-
-        static constexpr const char* PRAXIOM_TITLE = "PRAXIOM AGE";
-        static constexpr const char* BIO_AGE_PLACEHOLDER = "--";
+        Utility::DirtyValue<std::chrono::time_point<std::chrono::system_clock, std::chrono::days>> currentDate;
 
         lv_obj_t* label_time;
-        lv_obj_t* label_time_ampm;
         lv_obj_t* label_date;
+        lv_obj_t* labelPraxiomAge;          // "Praxiom Age" text label
+        lv_obj_t* labelPraxiomAgeNumber;    // Praxiom Age number label
         lv_obj_t* heartbeatIcon;
         lv_obj_t* heartbeatValue;
         lv_obj_t* stepIcon;
         lv_obj_t* stepValue;
         lv_obj_t* notificationIcon;
-        lv_obj_t* weatherIcon;
-        lv_obj_t* temperature;
-        lv_obj_t* label_bio_age_title;
-        lv_obj_t* label_bio_age;
-
-        StatusIcons statusIcons;
 
         Controllers::DateTime& dateTimeController;
-        const Controllers::Battery& batteryController;
-        const Controllers::Ble& bleController;
         Controllers::NotificationManager& notificationManager;
         Controllers::Settings& settingsController;
         Controllers::HeartRateController& heartRateController;
         Controllers::MotionController& motionController;
         Controllers::SimpleWeatherService& weatherService;
-        Controllers::PraxiomController& praxiomController;
+        Controllers::PraxiomService& praxiomService;
 
         lv_task_t* taskRefresh;
-
-        uint8_t displayedHour = -1;
-        uint8_t displayedMinute = -1;
-
-        uint16_t currentYear = 1970;
-        Controllers::DateTime::Months currentMonth = Controllers::DateTime::Months::Unknown;
-        Controllers::DateTime::Days currentDayOfWeek = Controllers::DateTime::Days::Unknown;
-        uint8_t currentDay = 0;
+        Widgets::StatusIcons statusIcons;
+        
+        // Praxiom Age variables
+        int basePraxiomAge;      // Biological age from phone app biomarker calculation
+        uint64_t lastSyncTime;   // Last sync timestamp
+        
+        // Helper function - simplified, no longer calculates adjustments
+        lv_color_t GetPraxiomAgeColor(int currentAge, int baseAge);
+        
+        // NOTE: CalculateRealtimeAdjustment() removed - was causing incorrect display values
       };
     }
+
+    template <>
+    struct WatchFaceTraits<WatchFace::Digital> {
+      static constexpr WatchFace watchFace = WatchFace::Digital;
+      static constexpr const char* name = "Digital face";
+
+      static Screens::Screen* Create(AppControllers& controllers) {
+        return new Screens::WatchFaceDigital(controllers.dateTimeController,
+                                             controllers.batteryController,
+                                             controllers.bleController,
+                                             controllers.alarmController,
+                                             controllers.notificationManager,
+                                             controllers.settingsController,
+                                             controllers.heartRateController,
+                                             controllers.motionController,
+                                             *controllers.weatherController,
+                                             controllers.nimbleController->GetPraxiomService());
+      };
+
+      static bool IsAvailable(Pinetime::Controllers::FS& /*filesystem*/) {
+        return true;
+      }
+    };
   }
 }

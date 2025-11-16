@@ -1,134 +1,115 @@
 #include "displayapp/screens/WatchFaceDigital.h"
 
-#include <date/date.h>
 #include <lvgl/lvgl.h>
 #include <cstdio>
 #include "displayapp/screens/BatteryIcon.h"
 #include "displayapp/screens/BleIcon.h"
-#include "displayapp/screens/Symbols.h"
 #include "displayapp/screens/NotificationIcon.h"
+#include "displayapp/screens/Symbols.h"
+#include "displayapp/screens/WeatherSymbols.h"
 #include "components/battery/BatteryController.h"
 #include "components/ble/BleController.h"
 #include "components/ble/NotificationManager.h"
-#include "components/ble/SimpleWeatherService.h"
-#include "components/settings/Settings.h"
+#include "components/ble/PraxiomService.h"
 #include "components/heartrate/HeartRateController.h"
 #include "components/motion/MotionController.h"
-#include "components/praxiom/PraxiomController.h"
+#include "components/settings/Settings.h"
 
 using namespace Pinetime::Applications::Screens;
 
-namespace {
-  constexpr int16_t POS_Y_TIME = -40;
-  constexpr int16_t POS_Y_PLUS_DATE = 3;
-  constexpr int16_t POS_Y_PLUS_WEATHER = -33;
-  constexpr int16_t POS_X_WEATHER_ICON = -10;
-  constexpr int16_t POS_X_TEMP = 55;
-  constexpr int16_t POS_X_DATE = 0;
-}
+// Declare the fonts we need
+extern lv_font_t jetbrains_mono_bold_20;
+extern lv_font_t jetbrains_mono_42;
 
 WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
                                    const Controllers::Battery& batteryController,
                                    const Controllers::Ble& bleController,
+                                   const Controllers::AlarmController& alarmController,
                                    Controllers::NotificationManager& notificationManager,
                                    Controllers::Settings& settingsController,
                                    Controllers::HeartRateController& heartRateController,
                                    Controllers::MotionController& motionController,
                                    Controllers::SimpleWeatherService& weatherService,
-                                   Controllers::PraxiomController& praxiomController)
+                                   Controllers::PraxiomService& praxiomService)
   : currentDateTime {{}},
     dateTimeController {dateTimeController},
-    batteryController {batteryController},
-    bleController {bleController},
     notificationManager {notificationManager},
     settingsController {settingsController},
     heartRateController {heartRateController},
     motionController {motionController},
     weatherService {weatherService},
-    praxiomController {praxiomController},
-    statusIcons(batteryController, bleController) {
+    praxiomService {praxiomService},
+    statusIcons(batteryController, bleController, alarmController),
+    basePraxiomAge(0),
+    lastSyncTime(0) {
+
+  // Create Praxiom brand gradient background
+  lv_obj_t* background_gradient = lv_obj_create(lv_scr_act(), nullptr);
+  lv_obj_set_size(background_gradient, 240, 240);
+  lv_obj_set_pos(background_gradient, 0, 0);
+  lv_obj_set_style_local_radius(background_gradient, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, 0);
+  lv_obj_set_style_local_bg_color(background_gradient, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xCC6600));
+  lv_obj_set_style_local_bg_grad_color(background_gradient, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x008B8B));
+  lv_obj_set_style_local_bg_grad_dir(background_gradient, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, LV_GRAD_DIR_VER);
+  lv_obj_set_style_local_border_width(background_gradient, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, 0);
 
   statusIcons.Create();
+  lv_obj_align(statusIcons.GetObject(), lv_scr_act(), LV_ALIGN_IN_TOP_RIGHT, -8, 0);
 
-  notificationIcon = lv_label_create(lv_scr_act(), nullptr);
-  lv_obj_set_style_local_text_color(notificationIcon, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_LIME);
-  lv_label_set_text_static(notificationIcon, NotificationIcon::GetIcon(false));
-  lv_obj_align(notificationIcon, nullptr, LV_ALIGN_IN_TOP_LEFT, 0, 0);
+  // Praxiom Age label - WHITE
+  labelPraxiomAge = lv_label_create(lv_scr_act(), nullptr);
+  lv_label_set_text_static(labelPraxiomAge, "Praxiom Age");
+  lv_obj_set_style_local_text_font(labelPraxiomAge, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_bold_20);
+  lv_obj_set_style_local_text_color(labelPraxiomAge, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));
+  lv_obj_align(labelPraxiomAge, lv_scr_act(), LV_ALIGN_CENTER, 0, -80);
 
-  // Praxiom gradient background
-  static lv_style_t style_bg;
-  lv_style_init(&style_bg);
-  lv_style_set_bg_opa(&style_bg, LV_STATE_DEFAULT, LV_OPA_30);
-  lv_style_set_bg_color(&style_bg, LV_STATE_DEFAULT, lv_color_hex(0xFF8C00));
-  lv_style_set_bg_grad_color(&style_bg, LV_STATE_DEFAULT, lv_color_hex(0x00CFC1));
-  lv_style_set_bg_grad_dir(&style_bg, LV_STATE_DEFAULT, LV_GRAD_DIR_VER);
+  // Age number label
+  labelPraxiomAgeNumber = lv_label_create(lv_scr_act(), nullptr);
+  lv_obj_set_style_local_text_font(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_42);
+  lv_label_set_text_static(labelPraxiomAgeNumber, "0");
+  lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));
+  lv_obj_align(labelPraxiomAgeNumber, lv_scr_act(), LV_ALIGN_CENTER, 0, -10);
 
-  lv_obj_t* bg = lv_obj_create(lv_scr_act(), nullptr);
-  lv_obj_add_style(bg, LV_OBJ_PART_MAIN, &style_bg);
-  lv_obj_set_size(bg, 240, 240);
-  lv_obj_set_pos(bg, 0, 0);
-  lv_obj_move_background(bg);
-
+  // Time label - BLACK
   label_time = lv_label_create(lv_scr_act(), nullptr);
-  lv_obj_set_style_local_text_font(label_time, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_extrabold_compressed);
-  lv_obj_set_style_local_text_color(label_time, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_WHITE);
-  lv_obj_align(label_time, nullptr, LV_ALIGN_CENTER, 0, POS_Y_TIME);
+  lv_obj_set_style_local_text_font(label_time, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_42);
+  lv_obj_set_style_local_text_color(label_time, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x000000));
+  lv_label_set_text_static(label_time, "00:00");
+  lv_obj_align(label_time, lv_scr_act(), LV_ALIGN_CENTER, 0, 55);
 
-  label_time_ampm = lv_label_create(lv_scr_act(), nullptr);
-  lv_obj_set_style_local_text_font(label_time_ampm, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_bold_20);
-  lv_label_set_text_static(label_time_ampm, "");
-  lv_obj_set_style_local_text_color(label_time_ampm, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_WHITE);
-  lv_obj_align(label_time_ampm, label_time, LV_ALIGN_OUT_RIGHT_TOP, 5, 5);
-
+  // Date label - BLACK
   label_date = lv_label_create(lv_scr_act(), nullptr);
-  lv_obj_set_style_local_text_color(label_date, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_WHITE);
   lv_obj_set_style_local_text_font(label_date, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_bold_20);
-  lv_obj_align(label_date, label_time, LV_ALIGN_OUT_BOTTOM_MID, POS_X_DATE, POS_Y_PLUS_DATE);
+  lv_obj_set_style_local_text_color(label_date, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x000000));
+  lv_obj_align(label_date, lv_scr_act(), LV_ALIGN_CENTER, 0, 90);
 
-  // Praxiom Bio-Age Section
-  label_bio_age_title = lv_label_create(lv_scr_act(), nullptr);
-  lv_obj_set_style_local_text_color(label_bio_age_title, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_WHITE);
-  lv_obj_set_style_local_text_font(label_bio_age_title, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_bold_20);
-  lv_label_set_text_static(label_bio_age_title, PRAXIOM_TITLE);
-  lv_obj_align(label_bio_age_title, nullptr, LV_ALIGN_CENTER, 0, 55);
-
-  label_bio_age = lv_label_create(lv_scr_act(), nullptr);
-  lv_obj_set_style_local_text_font(label_bio_age, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_42);
-  lv_obj_set_style_local_text_color(label_bio_age, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x00FF00));
-  lv_label_set_text_static(label_bio_age, BIO_AGE_PLACEHOLDER);
-  lv_obj_align(label_bio_age, label_bio_age_title, LV_ALIGN_OUT_BOTTOM_MID, 0, 5);
-
+  // Heart rate - BLACK
   heartbeatIcon = lv_label_create(lv_scr_act(), nullptr);
   lv_label_set_text_static(heartbeatIcon, Symbols::heartBeat);
-  lv_obj_set_style_local_text_color(heartbeatIcon, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xCE1B1B));
+  lv_obj_set_style_local_text_color(heartbeatIcon, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x000000));
   lv_obj_align(heartbeatIcon, lv_scr_act(), LV_ALIGN_IN_BOTTOM_LEFT, 0, 0);
 
   heartbeatValue = lv_label_create(lv_scr_act(), nullptr);
-  lv_obj_set_style_local_text_color(heartbeatValue, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xCE1B1B));
+  lv_obj_set_style_local_text_color(heartbeatValue, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x000000));
   lv_label_set_text_static(heartbeatValue, "");
   lv_obj_align(heartbeatValue, heartbeatIcon, LV_ALIGN_OUT_RIGHT_MID, 5, 0);
 
-  stepValue = lv_label_create(lv_scr_act(), nullptr);
-  lv_obj_set_style_local_text_color(stepValue, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_WHITE);
-  lv_label_set_text_static(stepValue, "0");
-  lv_obj_align(stepValue, lv_scr_act(), LV_ALIGN_IN_BOTTOM_RIGHT, 0, 0);
-
+  // Steps - BLACK
   stepIcon = lv_label_create(lv_scr_act(), nullptr);
-  lv_obj_set_style_local_text_color(stepIcon, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_WHITE);
+  lv_obj_set_style_local_text_color(stepIcon, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x000000));
   lv_label_set_text_static(stepIcon, Symbols::shoe);
-  lv_obj_align(stepIcon, stepValue, LV_ALIGN_OUT_LEFT_MID, -5, 0);
+  lv_obj_align(stepIcon, lv_scr_act(), LV_ALIGN_IN_BOTTOM_RIGHT, 0, 0);
 
-  weatherIcon = lv_label_create(lv_scr_act(), nullptr);
-  lv_obj_set_style_local_text_color(weatherIcon, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_WHITE);
-  lv_obj_set_style_local_text_font(weatherIcon, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &fontawesome_weathericons);
-  lv_label_set_text(weatherIcon, Symbols::ban);
-  lv_obj_align(weatherIcon, label_time, LV_ALIGN_OUT_TOP_MID, POS_X_WEATHER_ICON, POS_Y_PLUS_WEATHER);
-  lv_obj_set_auto_realign(weatherIcon, true);
+  stepValue = lv_label_create(lv_scr_act(), nullptr);
+  lv_obj_set_style_local_text_color(stepValue, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x000000));
+  lv_label_set_text_static(stepValue, "0");
+  lv_obj_align(stepValue, stepIcon, LV_ALIGN_OUT_LEFT_MID, -5, 0);
 
-  temperature = lv_label_create(lv_scr_act(), nullptr);
-  lv_obj_set_style_local_text_color(temperature, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_WHITE);
-  lv_label_set_text_static(temperature, "");
-  lv_obj_align(temperature, label_time, LV_ALIGN_OUT_TOP_MID, POS_X_TEMP, POS_Y_PLUS_WEATHER);
+  // Notification - BLACK
+  notificationIcon = lv_label_create(lv_scr_act(), nullptr);
+  lv_obj_set_style_local_text_color(notificationIcon, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x000000));
+  lv_label_set_text_static(notificationIcon, NotificationIcon::GetIcon(false));
+  lv_obj_align(notificationIcon, nullptr, LV_ALIGN_IN_TOP_LEFT, 0, 0);
 
   taskRefresh = lv_task_create(RefreshTaskCallback, LV_DISP_DEF_REFR_PERIOD, LV_TASK_PRIO_MID, this);
   Refresh();
@@ -139,98 +120,57 @@ WatchFaceDigital::~WatchFaceDigital() {
   lv_obj_clean(lv_scr_act());
 }
 
+void WatchFaceDigital::UpdateBasePraxiomAge(int age) {
+  basePraxiomAge = age;
+  lastSyncTime = dateTimeController.CurrentDateTime().time_since_epoch().count();
+}
+
+int WatchFaceDigital::GetCurrentPraxiomAge() {
+  return basePraxiomAge;
+}
+
+lv_color_t WatchFaceDigital::GetPraxiomAgeColor(int currentAge, int baseAge) {
+  (void)currentAge;
+  (void)baseAge;
+  return lv_color_hex(0xFFFFFF);
+}
+
 void WatchFaceDigital::Refresh() {
   statusIcons.Update();
 
-  notificationState = notificationManager.AreNewNotificationsAvailable();
   if (notificationState.IsUpdated()) {
     lv_label_set_text_static(notificationIcon, NotificationIcon::GetIcon(notificationState.Get()));
   }
 
-  currentDateTime = std::chrono::time_point_cast<std::chrono::seconds>(dateTimeController.CurrentDateTime());
+  currentDateTime = std::chrono::time_point_cast<std::chrono::minutes>(dateTimeController.CurrentDateTime());
+
   if (currentDateTime.IsUpdated()) {
-    auto newDateTime = currentDateTime.Get();
+    uint8_t hour = dateTimeController.Hours();
+    uint8_t minute = dateTimeController.Minutes();
+    lv_label_set_text_fmt(label_time, "%02d:%02d", hour, minute);
 
-    auto dp = date::floor<date::days>(newDateTime);
-    auto time = date::make_time(newDateTime - dp);
-    auto yearMonthDay = date::year_month_day(dp);
-
-    auto year = static_cast<int>(yearMonthDay.year());
-    auto month = static_cast<Pinetime::Controllers::DateTime::Months>(static_cast<unsigned>(yearMonthDay.month()));
-    auto day = static_cast<unsigned>(yearMonthDay.day());
-    auto dayOfWeek = static_cast<Pinetime::Controllers::DateTime::Days>(date::weekday(yearMonthDay).iso_encoding());
-
-    uint8_t hour = time.hours().count();
-    uint8_t minute = time.minutes().count();
-
-    if (displayedHour != hour || displayedMinute != minute) {
-      displayedHour = hour;
-      displayedMinute = minute;
-
-      if (settingsController.GetClockType() == Controllers::Settings::ClockType::H12) {
-        char ampmChar[3] = "AM";
-        if (hour == 0) {
-          hour = 12;
-        } else if (hour == 12) {
-          ampmChar[0] = 'P';
-        } else if (hour > 12) {
-          hour = hour - 12;
-          ampmChar[0] = 'P';
-        }
-        lv_label_set_text_fmt(label_time, "%2d:%02d", hour, minute);
-        lv_label_set_text(label_time_ampm, ampmChar);
-      } else {
-        lv_label_set_text_fmt(label_time, "%02d:%02d", hour, minute);
-      }
-    }
-
-    if ((year != currentYear) || (month != currentMonth) || (dayOfWeek != currentDayOfWeek) || (day != currentDay)) {
-      if (settingsController.GetClockType() == Controllers::Settings::ClockType::H24) {
-        lv_label_set_text_fmt(label_date,
-                             "%s %02d %s",
-                             dateTimeController.DayOfWeekShortToString(dayOfWeek),
-                             day,
-                             dateTimeController.MonthShortToString(month));
-      } else {
-        lv_label_set_text_fmt(label_date,
-                             "%s %s %02d",
-                             dateTimeController.DayOfWeekShortToString(dayOfWeek),
-                             dateTimeController.MonthShortToString(month),
-                             day);
-      }
-
-      currentYear = year;
-      currentMonth = month;
-      currentDayOfWeek = dayOfWeek;
-      currentDay = day;
+    currentDate = std::chrono::time_point_cast<std::chrono::days>(currentDateTime.Get());
+    if (currentDate.IsUpdated()) {
+      uint16_t year = dateTimeController.Year();
+      uint8_t day = dateTimeController.Day();
+      lv_label_set_text_fmt(label_date,
+                            "%s %d %s %d",
+                            dateTimeController.DayOfWeekShortToString(),
+                            day,
+                            dateTimeController.MonthShortToString(),
+                            year);
+      lv_obj_realign(label_date);
     }
   }
 
-  // Update Bio-Age from PraxiomController
-  if (praxiomController.HasBioAge()) {
-    float bioAge = praxiomController.GetBioAge();
-    lv_label_set_text_fmt(label_bio_age, "%.1f", bioAge);
-    lv_obj_set_style_local_text_color(label_bio_age, LV_LABEL_PART_MAIN, 
-                                      LV_STATE_DEFAULT, lv_color_hex(0x00FF00));
-  } else {
-    lv_label_set_text_static(label_bio_age, BIO_AGE_PLACEHOLDER);
-    lv_obj_set_style_local_text_color(label_bio_age, LV_LABEL_PART_MAIN, 
-                                      LV_STATE_DEFAULT, LV_COLOR_WHITE);
-  }
-  
   heartbeat = heartRateController.HeartRate();
   heartbeatRunning = heartRateController.State() != Controllers::HeartRateController::States::Stopped;
   if (heartbeat.IsUpdated() || heartbeatRunning.IsUpdated()) {
     if (heartbeatRunning.Get()) {
-      lv_obj_set_hidden(heartbeatIcon, false);
-      lv_obj_set_hidden(heartbeatValue, false);
       lv_label_set_text_fmt(heartbeatValue, "%d", heartbeat.Get());
     } else {
-      lv_obj_set_hidden(heartbeatIcon, true);
-      lv_obj_set_hidden(heartbeatValue, true);
+      lv_label_set_text_static(heartbeatValue, "");
     }
-
-    lv_obj_realign(heartbeatIcon);
     lv_obj_realign(heartbeatValue);
   }
 
@@ -238,27 +178,33 @@ void WatchFaceDigital::Refresh() {
   if (stepCount.IsUpdated()) {
     lv_label_set_text_fmt(stepValue, "%lu", stepCount.Get());
     lv_obj_realign(stepValue);
-    lv_obj_realign(stepIcon);
   }
 
-  currentWeather = weatherService.Current();
-  if (currentWeather.IsUpdated()) {
-    auto optCurrentWeather = currentWeather.Get();
-    if (optCurrentWeather) {
-      int16_t temp = optCurrentWeather->temperature;
-      char tempUnit = 'C';
-      if (settingsController.GetWeatherFormat() == Controllers::Settings::WeatherFormat::Imperial) {
-        temp = Controllers::SimpleWeatherService::CelsiusToFahrenheit(temp);
-        tempUnit = 'F';
-      }
-      temp = temp / 100 + (temp % 100 >= 50 ? 1 : 0);
-      lv_label_set_text_fmt(temperature, "%d°%c", temp, tempUnit);
-      lv_label_set_text(weatherIcon, Symbols::GetSymbol(optCurrentWeather->iconId));
-    } else {
-      lv_label_set_text_static(temperature, "");
-      lv_label_set_text(weatherIcon, Symbols::ban);
+  // ✅ FIXED Bio-Age update - proper bounds checking and safe conversion
+  uint32_t rawAge = praxiomService.GetBasePraxiomAge();
+  
+  // Strict validation: only accept reasonable ages
+  if (rawAge >= 18 && rawAge <= 120) {
+    // Valid age range - safe to display
+    int ageInt = static_cast<int>(rawAge);
+    
+    if (ageInt != basePraxiomAge) {
+      basePraxiomAge = ageInt;
+      lv_label_set_text_fmt(labelPraxiomAgeNumber, "%d", basePraxiomAge);
+      lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, 
+        LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x00FF00));  // GREEN
+      lv_obj_realign(labelPraxiomAgeNumber);
     }
-    lv_obj_realign(temperature);
-    lv_obj_realign(weatherIcon);
+  } else if (rawAge == 0) {
+    // Zero means no data yet - show 0 in white
+    if (basePraxiomAge != 0) {
+      basePraxiomAge = 0;
+      lv_label_set_text_fmt(labelPraxiomAgeNumber, "%d", 0);
+      lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, 
+        LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));  // WHITE
+      lv_obj_realign(labelPraxiomAgeNumber);
+    }
   }
+  // If rawAge is out of bounds (like 570640687), don't update display
+  // Just leave it at the last valid value or 0
 }
