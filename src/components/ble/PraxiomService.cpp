@@ -1,19 +1,6 @@
 /*  Copyright (C) 2024 Praxiom Health
 
     This file is part of Praxiom.
-
-    Praxiom is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published
-    by the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    Praxiom is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
 #include "components/ble/PraxiomService.h"
@@ -34,11 +21,35 @@ int PraxiomCallback(uint16_t /*connHandle*/, uint16_t /*attrHandle*/, struct ble
 }
 
 PraxiomService::PraxiomService() {
+  // Initialize with 0
+  basePraxiomAge = 0;
+  
+  NRF_LOG_INFO("🎯 PraxiomService constructed, initial age = %d", basePraxiomAge);
+  
+  // Characteristic definition
+  characteristicDefinition[0] = {
+    .uuid = &praxiomBioAgeCharUuid.u,
+    .access_cb = PraxiomCallback,
+    .arg = this,
+    .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_NOTIFY,
+    .val_handle = nullptr,
+  };
+  characteristicDefinition[1] = {0};
+
+  // Service definition
+  serviceDefinition[0] = {
+    .type = BLE_GATT_SVC_TYPE_PRIMARY,
+    .uuid = &praxiomServiceUuid.u,
+    .characteristics = characteristicDefinition
+  };
+  serviceDefinition[1] = {0};
 }
 
 void PraxiomService::Init() {
   ble_gatts_count_cfg(serviceDefinition);
   ble_gatts_add_svcs(serviceDefinition);
+  
+  NRF_LOG_INFO("🎯 PraxiomService initialized");
 }
 
 int PraxiomService::OnCommand(struct ble_gatt_access_ctxt* ctxt) {
@@ -47,24 +58,32 @@ int PraxiomService::OnCommand(struct ble_gatt_access_ctxt* ctxt) {
     const auto* buffer = ctxt->om;
     const auto* dataBuffer = buffer->om_data;
     
+    NRF_LOG_INFO("📥 WRITE operation received");
+    
     // Extract 4-byte uint32_t age value
     if (OS_MBUF_PKTLEN(buffer) == sizeof(uint32_t)) {
-      basePraxiomAge = ToUInt32(dataBuffer);
+      uint32_t receivedAge = ToUInt32(dataBuffer);
       
-      NRF_LOG_INFO("Praxiom Base Age received from mobile app: %d", basePraxiomAge);
+      // ✅ DIAGNOSTIC: Log before and after
+      NRF_LOG_INFO("📝 Before: basePraxiomAge = %d", basePraxiomAge);
+      basePraxiomAge = receivedAge;
+      NRF_LOG_INFO("✅ After: basePraxiomAge = %d (received %d)", basePraxiomAge, receivedAge);
+      NRF_LOG_INFO("📊 Raw bytes: [%d, %d, %d, %d]", 
+                   dataBuffer[0], dataBuffer[1], dataBuffer[2], dataBuffer[3]);
     } else {
-      NRF_LOG_WARNING("Invalid Praxiom Age data length: %d (expected 4)", OS_MBUF_PKTLEN(buffer));
+      NRF_LOG_WARNING("⚠️ Invalid data length: %d (expected 4)", OS_MBUF_PKTLEN(buffer));
     }
     
     return 0;
   } else if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR) {
     // Handle READ operation - mobile app reading current Bio-Age
-    os_mbuf_append(ctxt->om, &basePraxiomAge, sizeof(basePraxiomAge));
+    NRF_LOG_INFO("📤 READ operation: returning basePraxiomAge = %d", basePraxiomAge);
     
-    NRF_LOG_INFO("Praxiom Base Age read by mobile app: %d", basePraxiomAge);
+    os_mbuf_append(ctxt->om, &basePraxiomAge, sizeof(basePraxiomAge));
     
     return 0;
   }
   
+  NRF_LOG_WARNING("⚠️ Unknown operation: %d", ctxt->op);
   return 0;
 }
