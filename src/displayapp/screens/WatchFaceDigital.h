@@ -4,24 +4,20 @@
 #include <cstdint>
 #include <memory>
 #include "displayapp/screens/Screen.h"
-#include "displayapp/screens/ScreenList.h"
 #include "components/datetime/DateTimeController.h"
 #include "components/ble/BleController.h"
 #include "components/ble/NotificationManager.h"
+#include "components/ble/SimpleWeatherService.h"
+#include "components/settings/Settings.h"
 #include "displayapp/screens/BatteryIcon.h"
 #include "utility/DirtyValue.h"
-#include "displayapp/apps/Apps.h"
 #include "displayapp/screens/StatusIcons.h"
 
 namespace Pinetime {
   namespace Controllers {
-    class Settings;
-    class Battery;
-    class Ble;
-    class NotificationManager;
     class HeartRateController;
     class MotionController;
-    class SimpleWeatherService;
+    class PraxiomController;
   }
 
   namespace Applications {
@@ -36,14 +32,12 @@ namespace Pinetime {
                         Controllers::Settings& settingsController,
                         Controllers::HeartRateController& heartRateController,
                         Controllers::MotionController& motionController,
-                        Controllers::SimpleWeatherService& weatherService);
+                        Controllers::SimpleWeatherService& weatherService,
+                        Controllers::PraxiomController& praxiomController);
 
         ~WatchFaceDigital() override;
 
         void Refresh() override;
-        
-        // Method to update bio-age from BLE service
-        void SetBioAge(float age);
 
       private:
         Utility::DirtyValue<std::chrono::time_point<std::chrono::system_clock, std::chrono::seconds>> currentDateTime {};
@@ -53,6 +47,9 @@ namespace Pinetime {
         Utility::DirtyValue<bool> notificationState {};
         using OptCurrentWeather = std::optional<Pinetime::Controllers::SimpleWeatherService::CurrentWeather>;
         Utility::DirtyValue<OptCurrentWeather> currentWeather {};
+
+        static constexpr const char* PRAXIOM_TITLE = "PRAXIOM AGE";
+        static constexpr const char* BIO_AGE_PLACEHOLDER = "--";
 
         lv_obj_t* label_time;
         lv_obj_t* label_time_ampm;
@@ -77,6 +74,7 @@ namespace Pinetime {
         Controllers::HeartRateController& heartRateController;
         Controllers::MotionController& motionController;
         Controllers::SimpleWeatherService& weatherService;
+        Controllers::PraxiomController& praxiomController;
 
         lv_task_t* taskRefresh;
 
@@ -84,8 +82,8 @@ namespace Pinetime {
         uint8_t displayedMinute = -1;
 
         uint16_t currentYear = 1970;
-        Pinetime::Controllers::DateTime::Months currentMonth = Pinetime::Controllers::DateTime::Months::Unknown;
-        Pinetime::Controllers::DateTime::Days currentDayOfWeek = Pinetime::Controllers::DateTime::Days::Unknown;
+        Controllers::DateTime::Months currentMonth = Controllers::DateTime::Months::Unknown;
+        Controllers::DateTime::Days currentDayOfWeek = Controllers::DateTime::Days::Unknown;
         uint8_t currentDay = 0;
       };
     }
