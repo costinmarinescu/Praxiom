@@ -6,17 +6,15 @@ namespace Pinetime {
   namespace Controllers {
     class PraxiomController {
     public:
-      PraxiomController() = default;
+      void SetBioAge(uint8_t age);
+      uint8_t GetBioAge() const;
       
-      void SetBioAge(float age);
-      float GetBioAge() const;
-      bool HasBioAge() const;
-      
-      void Reset();
-      
+      void SetAgeUpdated(bool updated);
+      bool IsAgeUpdated() const;
+
     private:
-      float bioAge = 0.0f;
-      bool bioAgeReceived = false;
+      uint8_t bioAge = 0;
+      bool ageUpdated = false;
     };
   }
 }

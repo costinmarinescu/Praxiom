@@ -2,22 +2,19 @@
 
 using namespace Pinetime::Controllers;
 
-void PraxiomController::SetBioAge(float age) {
-  if (age > 0.0f && age < 200.0f) {
-    bioAge = age;
-    bioAgeReceived = true;
-  }
+void PraxiomController::SetBioAge(uint8_t age) {
+  bioAge = age;
+  ageUpdated = true;
 }
 
-float PraxiomController::GetBioAge() const {
+uint8_t PraxiomController::GetBioAge() const {
   return bioAge;
 }
 
-bool PraxiomController::HasBioAge() const {
-  return bioAgeReceived;
+void PraxiomController::SetAgeUpdated(bool updated) {
+  ageUpdated = updated;
 }
 
-void PraxiomController::Reset() {
-  bioAge = 0.0f;
-  bioAgeReceived = false;
+bool PraxiomController::IsAgeUpdated() const {
+  return ageUpdated;
 }
