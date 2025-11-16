@@ -3,81 +3,70 @@
 #include <memory>
 
 #include <FreeRTOS.h>
+#include <queue.h>
 #include <task.h>
 #include <timers.h>
 #include <heartratetask/HeartRateTask.h>
-#include <components/heartrate/HeartRateController.h>
+#include <components/settings/Settings.h>
+#include <drivers/Bma421.h>
+#include <drivers/PinMap.h>
+#include <components/motion/MotionController.h>
 
-#include "SystemMonitor.h"
-#include "components/battery/BatteryController.h"
-#include "components/ble/BleController.h"
+#include "systemtask/SystemMonitor.h"
+#include "components/ble/NimbleController.h"
 #include "components/ble/NotificationManager.h"
-#include "components/brightness/BrightnessController.h"
-#include "components/motor/MotorController.h"
-#include "components/datetime/DateTimeController.h"
-#include "components/firmwarevalidator/FirmwareValidator.h"
-#include "components/settings/Settings.h"
-#include "displayapp/DisplayApp.h"
-#include "drivers/Watchdog.h"
-#include "drivers/Cst816s.h"
-#include "components/motion/MotionController.h"
+#include "components/stopwatch/StopWatchController.h"
+#include "components/alarm/AlarmController.h"
 #include "components/fs/FS.h"
-#include "components/praxiom/PraxiomController.h"
+#include "touchhandler/TouchHandler.h"
+#include "buttonhandler/ButtonHandler.h"
+#include "buttonhandler/ButtonActions.h"
 
 #ifdef PINETIME_IS_RECOVERY
   #include "displayapp/DisplayAppRecovery.h"
-  #include "displayapp/DummyLvglBackend.h"
 #else
   #include "components/settings/Settings.h"
-  #include "displayapp/LittleVgl.h"
+  #include "displayapp/DisplayApp.h"
 #endif
 
-#include "drivers/Bma421.h"
-#include "drivers/TwiMaster.h"
-#include "drivers/Hrs3300.h"
-#include "drivers/PinMap.h"
+#include "drivers/Watchdog.h"
+#include "systemtask/Messages.h"
+
+extern std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds> NoInit_BackUpTime;
 
 namespace Pinetime {
+  namespace Drivers {
+    class Cst816S;
+    class SpiMaster;
+    class SpiNorFlash;
+    class St7789;
+    class TwiMaster;
+    class Hrs3300;
+  }
+
+  namespace Controllers {
+    class Battery;
+    class TouchHandler;
+    class ButtonHandler;
+  }
+
   namespace System {
     class SystemTask {
     public:
-      enum class Messages : uint8_t {
-        GoToSleep,
-        GoToRunning,
-        TouchEvent,
-        ButtonPushed,
-        ButtonLongPressed,
-        ButtonLongerPressed,
-        ButtonDoubleClicked,
-        Timer,
-        BleFirmwareUpdateStarted,
-        BleConnected,
-        UpdateTimeOut,
-        DimScreen,
-        RestoreBrightness,
-        MeasureBatteryTimerExpired,
-        BatteryPercentageUpdated,
-        StartFileTransfer,
-        StopFileTransfer,
-        BleRadioEnableToggle,
-        OnChargingEvent
-      };
-
+      enum class SystemTaskState { Sleeping, Running, GoingToSleep, AODSleeping };
       SystemTask(Drivers::SpiMaster& spi,
-                 Drivers::St7789& lcd,
                  Pinetime::Drivers::SpiNorFlash& spiNorFlash,
                  Drivers::TwiMaster& twiMaster,
                  Drivers::Cst816S& touchPanel,
-                 Components::LittleVgl& lvgl,
                  Controllers::Battery& batteryController,
                  Controllers::Ble& bleController,
                  Controllers::DateTime& dateTimeController,
-                 Controllers::TimerController& timerController,
+                 Controllers::StopWatchController& stopWatchController,
                  Controllers::AlarmController& alarmController,
                  Drivers::Watchdog& watchdog,
                  Pinetime::Controllers::NotificationManager& notificationManager,
-                 Pinetime::Controllers::MotorController& motorController,
                  Pinetime::Drivers::Hrs3300& heartRateSensor,
+                 Pinetime::Controllers::MotionController& motionController,
                  Pinetime::Drivers::Bma421& motionSensor,
                  Controllers::Settings& settingsController,
                  Pinetime::Controllers::HeartRateController& heartRateController,
@@ -90,84 +79,72 @@ namespace Pinetime {
       void Start();
       void PushMessage(Messages msg);
 
-      void OnButtonPushed();
-      void OnButtonLongPressed();
-      void OnButtonLongerPressed();
-      void OnButtonDoubleClicked();
-      void OnTouchEvent();
-
-      void OnIdle();
-
-      Pinetime::Controllers::NimbleController& nimble() {
-        return *nimbleController;
+      bool IsSleepDisabled() {
+        return wakeLocksHeld > 0;
       }
 
-      Pinetime::Controllers::PraxiomController& GetPraxiomController() {
-        return praxiomController;
+      Pinetime::Controllers::NimbleController& nimble() {
+        return nimbleController;
+      };
+
+      Pinetime::Controllers::NotificationManager& GetNotificationManager() {
+        return notificationManager;
+      };
+
+      Pinetime::Controllers::Settings& GetSettings() {
+        return settingsController;
+      };
+
+      bool IsSleeping() const {
+        return state != SystemTaskState::Running;
       }
 
     private:
       TaskHandle_t taskHandle;
 
       Pinetime::Drivers::SpiMaster& spi;
-      Pinetime::Drivers::St7789& lcd;
       Pinetime::Drivers::SpiNorFlash& spiNorFlash;
       Pinetime::Drivers::TwiMaster& twiMaster;
       Pinetime::Drivers::Cst816S& touchPanel;
-      Pinetime::Components::LittleVgl& lvgl;
       Pinetime::Controllers::Battery& batteryController;
+
       Pinetime::Controllers::Ble& bleController;
       Pinetime::Controllers::DateTime& dateTimeController;
-      Pinetime::Controllers::TimerController& timerController;
+      Pinetime::Controllers::StopWatchController& stopWatchController;
       Pinetime::Controllers::AlarmController& alarmController;
+      QueueHandle_t systemTasksMsgQueue;
       Pinetime::Drivers::Watchdog& watchdog;
       Pinetime::Controllers::NotificationManager& notificationManager;
-      Pinetime::Controllers::MotorController& motorController;
       Pinetime::Drivers::Hrs3300& heartRateSensor;
       Pinetime::Drivers::Bma421& motionSensor;
       Pinetime::Controllers::Settings& settingsController;
       Pinetime::Controllers::HeartRateController& heartRateController;
-      Pinetime::Controllers::MotionController motionController;
+      Pinetime::Controllers::MotionController& motionController;
+
       Pinetime::Applications::DisplayApp& displayApp;
       Pinetime::Applications::HeartRateTask& heartRateApp;
       Pinetime::Controllers::FS& fs;
       Pinetime::Controllers::TouchHandler& touchHandler;
       Pinetime::Controllers::ButtonHandler& buttonHandler;
-      Pinetime::Controllers::PraxiomController praxiomController;
-
-      QueueHandle_t systemTasksMsgQueue;
-      std::atomic<bool> isSleeping {false};
-      std::atomic<bool> isGoingToSleep {false};
-      std::atomic<bool> isWakingUp {false};
-      Pinetime::Drivers::Bma421::AccelRawData accelerometerData;
-
-      std::unique_ptr<Pinetime::Controllers::NimbleController> nimbleController;
-      Controllers::BrightnessController brightnessController;
-      Controllers::FirmwareValidator validator;
-      SystemMonitor monitor;
-
-      static constexpr uint8_t pinSpiSck = PinMap::SpiSck;
-      static constexpr uint8_t pinSpiMosi = PinMap::SpiMosi;
-      static constexpr uint8_t pinSpiMiso = PinMap::SpiMiso;
-      static constexpr uint8_t pinSpiFlashCsn = PinMap::SpiFlashCsn;
-      static constexpr uint8_t pinLcdCsn = PinMap::LcdCsn;
-      static constexpr uint8_t pinLcdDataCommand = PinMap::LcdDataCommand;
+      Pinetime::Controllers::NimbleController nimbleController;
 
       static void Process(void* instance);
       void Work();
-      void ReloadIdleTimer();
       bool isBleDiscoveryTimerRunning = false;
       uint8_t bleDiscoveryTimer = 0;
       TimerHandle_t measureBatteryTimer;
-      bool doNotGoToSleep = false;
+      uint8_t wakeLocksHeld = 0;
+      SystemTaskState state = SystemTaskState::Running;
 
       void HandleButtonAction(Controllers::ButtonActions action);
+      bool fastWakeUpDone = false;
 
-#if configUSE_TRACE_FACILITY == 1
-      SystemMonitor<FreeRtosMonitor> monitor;
-#else
-      SystemMonitor<DummyMonitor> monitor;
-#endif
+      void GoToRunning();
+      void GoToSleep();
+      void UpdateMotion();
+      static constexpr TickType_t batteryMeasurementPeriod = pdMS_TO_TICKS(10 * 60 * 1000);
+
+      SystemMonitor monitor;
     };
   }
 }

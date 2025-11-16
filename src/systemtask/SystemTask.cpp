@@ -1,63 +1,50 @@
 #include "systemtask/SystemTask.h"
-
-#define min
-#define max
-#include <host/ble_gap.h>
-#include <host/util/util.h>
-#include <nimble/hci_common.h>
-#undef max
-#undef min
 #include <hal/nrf_rtc.h>
 #include <libraries/gpiote/app_gpiote.h>
 #include <libraries/log/nrf_log.h>
-
-#include "BootErrors.h"
+#include "BootloaderVersion.h"
 #include "components/battery/BatteryController.h"
 #include "components/ble/BleController.h"
-#include "components/ble/NotificationManager.h"
-#include "components/brightness/BrightnessController.h"
-#include "components/datetime/DateTimeController.h"
-#include "components/heartrate/HeartRateController.h"
-#include "components/fs/FS.h"
+#include "displayapp/TouchEvents.h"
 #include "drivers/Cst816s.h"
-#include "drivers/PinMap.h"
 #include "drivers/St7789.h"
 #include "drivers/InternalFlash.h"
 #include "drivers/SpiMaster.h"
 #include "drivers/SpiNorFlash.h"
 #include "drivers/TwiMaster.h"
 #include "drivers/Hrs3300.h"
-#include "drivers/Bma421.h"
+#include "drivers/PinMap.h"
 #include "main.h"
-
 #include "BootErrors.h"
-#include "components/ble/NimbleController.h"
 
 #include <memory>
 
 using namespace Pinetime::System;
 
 namespace {
-  static inline bool in_isr() {
+  inline bool in_isr() {
     return (SCB->ICSR & SCB_ICSR_VECTACTIVE_Msk) != 0;
   }
 }
 
+void MeasureBatteryTimerCallback(TimerHandle_t xTimer) {
+  auto* sysTask = static_cast<SystemTask*>(pvTimerGetTimerID(xTimer));
+  sysTask->PushMessage(Pinetime::System::Messages::MeasureBatteryTimerExpired);
+}
+
 SystemTask::SystemTask(Drivers::SpiMaster& spi,
-                       Drivers::St7789& lcd,
                        Pinetime::Drivers::SpiNorFlash& spiNorFlash,
                        Drivers::TwiMaster& twiMaster,
                        Drivers::Cst816S& touchPanel,
-                       Components::LittleVgl& lvgl,
                        Controllers::Battery& batteryController,
                        Controllers::Ble& bleController,
                        Controllers::DateTime& dateTimeController,
-                       Controllers::TimerController& timerController,
+                       Controllers::StopWatchController& stopWatchController,
                        Controllers::AlarmController& alarmController,
                        Drivers::Watchdog& watchdog,
                        Pinetime::Controllers::NotificationManager& notificationManager,
-                       Pinetime::Controllers::MotorController& motorController,
                        Pinetime::Drivers::Hrs3300& heartRateSensor,
+                       Pinetime::Controllers::MotionController& motionController,
                        Pinetime::Drivers::Bma421& motionSensor,
                        Controllers::Settings& settingsController,
                        Pinetime::Controllers::HeartRateController& heartRateController,
@@ -67,35 +54,40 @@ SystemTask::SystemTask(Drivers::SpiMaster& spi,
                        Pinetime::Controllers::TouchHandler& touchHandler,
                        Pinetime::Controllers::ButtonHandler& buttonHandler)
   : spi {spi},
-    lcd {lcd},
     spiNorFlash {spiNorFlash},
     twiMaster {twiMaster},
     touchPanel {touchPanel},
-    lvgl {lvgl},
     batteryController {batteryController},
     bleController {bleController},
     dateTimeController {dateTimeController},
-    timerController {timerController},
+    stopWatchController {stopWatchController},
     alarmController {alarmController},
     watchdog {watchdog},
     notificationManager {notificationManager},
-    motorController {motorController},
     heartRateSensor {heartRateSensor},
     motionSensor {motionSensor},
     settingsController {settingsController},
     heartRateController {heartRateController},
-    motionController {motionSensor},
+    motionController {motionController},
     displayApp {displayApp},
-    heartRateApp {heartRateApp},
+    heartRateApp(heartRateApp),
     fs {fs},
     touchHandler {touchHandler},
     buttonHandler {buttonHandler},
-    systemTasksMsgQueue(xQueueCreate(10, 1)) {
+    nimbleController(*this,
+                     bleController,
+                     dateTimeController,
+                     notificationManager,
+                     batteryController,
+                     spiNorFlash,
+                     heartRateController,
+                     motionController,
+                     fs) {
 }
 
 void SystemTask::Start() {
   systemTasksMsgQueue = xQueueCreate(10, 1);
-  if (pdPASS != xTaskCreate(SystemTask::Process, "MAIN", 350, this, 0, &taskHandle)) {
+  if (pdPASS != xTaskCreate(SystemTask::Process, "MAIN", 350, this, 1, &taskHandle)) {
     APP_ERROR_HANDLER(NRF_ERROR_NO_MEM);
   }
 }
@@ -109,326 +101,386 @@ void SystemTask::Process(void* instance) {
 void SystemTask::Work() {
   BootErrors bootError = BootErrors::None;
 
-  watchdog.Setup(7);
+  watchdog.Setup(7, Drivers::Watchdog::SleepBehaviour::Run, Drivers::Watchdog::HaltBehaviour::Pause);
   watchdog.Start();
-  NRF_LOG_INFO("Last reset reason : %s", Pinetime::Drivers::Watchdog::ResetReasonToString(watchdog.ResetReason()));
+  NRF_LOG_INFO("Last reset reason : %s", Pinetime::Drivers::ResetReasonToString(watchdog.GetResetReason()));
+  if (!nrfx_gpiote_is_init()) {
+    nrfx_gpiote_init();
+  }
 
   spi.Init();
   spiNorFlash.Init();
   spiNorFlash.Wakeup();
-  
+
   fs.Init();
+  nimbleController.Init();
 
-  nimbleController.reset(new Pinetime::Controllers::NimbleController(*this,
-                                                                      bleController,
-                                                                      dateTimeController,
-                                                                      notificationManager,
-                                                                      batteryController,
-                                                                      spiNorFlash,
-                                                                      heartRateController,
-                                                                      motionController,
-                                                                      fs,
-                                                                      praxiomController));
-  nimbleController->Init();
-  nimbleController->StartAdvertising();
-
-  lcd.Init();
-  
   twiMaster.Init();
+  /*
+   * TODO We disable this warning message until we ensure it won't be displayed
+   * on legitimate PineTime equipped with a compatible touch controller.
+   * (some users reported false positive). See https://github.com/InfiniTimeOrg/InfiniTime/issues/763
+  if (!touchPanel.Init()) {
+    bootError = BootErrors::TouchController;
+  }
+   */
   touchPanel.Init();
-
-  batteryController.Init();
-  motorController.Init();
-  
+  dateTimeController.Register(this);
+  batteryController.Register(this);
   motionSensor.SoftReset();
-  
-  heartRateSensor.Enable();
+  alarmController.Init(this);
 
-  displayApp.Start(this);
-  displayApp.PushMessage(Pinetime::Applications::Display::Messages::UpdateBleConnection);
+  // Reset the TWI device because the motion sensor chip most probably crashed it...
+  twiMaster.Sleep();
+  twiMaster.Init();
 
+  motionSensor.Init();
+  motionController.Init(motionSensor.DeviceType());
+  settingsController.Init();
+
+  displayApp.Register(this);
+  displayApp.Register(&nimbleController.weather());
+  displayApp.Register(&nimbleController.music());
+  displayApp.Register(&nimbleController.navigation());
+  #ifndef PINETIME_IS_RECOVERY
+  displayApp.Register(&nimbleController.GetPraxiomService());
+  #endif
+  displayApp.Start(bootError);
+
+  heartRateSensor.Init();
+  heartRateSensor.Disable();
   heartRateApp.Start();
 
-  validator.Validate();
+  buttonHandler.Init(this);
 
-  nrf_gpio_cfg_sense_input(PinMap::Button, NRF_GPIO_PIN_PULLDOWN, NRF_GPIO_PIN_SENSE_HIGH);
+  // Setup Interrupts
+  nrfx_gpiote_in_config_t pinConfig;
+  pinConfig.skip_gpio_setup = false;
+  pinConfig.hi_accuracy = false;
+  pinConfig.is_watcher = false;
+
+  // Button
+  nrf_gpio_cfg_output(PinMap::ButtonEnable);
+  nrf_gpio_pin_set(PinMap::ButtonEnable);
+  pinConfig.sense = NRF_GPIOTE_POLARITY_TOGGLE;
+  pinConfig.pull = NRF_GPIO_PIN_PULLDOWN;
+  nrfx_gpiote_in_init(PinMap::Button, &pinConfig, nrfx_gpiote_evt_handler);
+  nrfx_gpiote_in_event_enable(PinMap::Button, true);
+
+  // Touchscreen
+  pinConfig.sense = NRF_GPIOTE_POLARITY_HITOLO;
+  pinConfig.pull = NRF_GPIO_PIN_PULLUP;
+  nrfx_gpiote_in_init(PinMap::Cst816sIrq, &pinConfig, nrfx_gpiote_evt_handler);
+  nrfx_gpiote_in_event_enable(PinMap::Cst816sIrq, true);
+
+  // Power present
+  pinConfig.sense = NRF_GPIOTE_POLARITY_TOGGLE;
+  pinConfig.pull = NRF_GPIO_PIN_NOPULL;
+  nrfx_gpiote_in_init(PinMap::PowerPresent, &pinConfig, nrfx_gpiote_evt_handler);
+  nrfx_gpiote_in_event_enable(PinMap::PowerPresent, true);
+
+  batteryController.MeasureVoltage();
 
   measureBatteryTimer = xTimerCreate("measureBattery", batteryMeasurementPeriod, pdTRUE, this, MeasureBatteryTimerCallback);
-  xTimerStart(measureBatteryTimer, 0);
+  xTimerStart(measureBatteryTimer, portMAX_DELAY);
 
-  nrf_gpio_cfg_sense_input(PinMap::PowerPresent, NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_SENSE_HIGH);
-
-  idleTimer = xTimerCreate("idleTimer", pdMS_TO_TICKS(settingsController.GetScreenTimeOut() - 5000), pdFALSE, this, IdleTimerCallback);
-  dimTimer = xTimerCreate("dimTimer", pdMS_TO_TICKS(5000), pdFALSE, this, DimTimerCallback);
-  xTimerStart(idleTimer, 0);
-
-  for (;;) {
-    UpdateMotion();
-
-    uint8_t msg;
-    if (xQueueReceive(systemTasksMsgQueue, &msg, 100)) {
-
-      Messages message = static_cast<Messages>(msg);
-      switch (message) {
-        case Messages::UpdateTimeOut:
-          ReloadIdleTimer();
-          displayApp.PushMessage(Pinetime::Applications::Display::Messages::UpdateTimeOut);
+#pragma clang diagnostic push
+#pragma ide diagnostic ignored "EndlessLoop"
+  while (true) {
+    Messages msg;
+    if (xQueueReceive(systemTasksMsgQueue, &msg, 100) == pdTRUE) {
+      switch (msg) {
+        case Messages::EnableSleeping:
+          wakeLocksHeld--;
+          break;
+        case Messages::DisableSleeping:
+          GoToRunning();
+          wakeLocksHeld++;
           break;
         case Messages::GoToRunning:
-          spi.Wakeup();
-          twiMaster.Wakeup();
-
-          nimbleController->StartAdvertising();
-          xTimerStart(dimTimer, 0);
-          spiNorFlash.Wakeup();
-          lcd.Wakeup();
-
-          displayApp.PushMessage(Pinetime::Applications::Display::Messages::GoToRunning);
-          displayApp.PushMessage(Pinetime::Applications::Display::Messages::UpdateBleConnection);
-          heartRateApp.PushMessage(Pinetime::Applications::HeartRateTask::Messages::WakeUp);
-
-          isSleeping = false;
-          isWakingUp = false;
-          isDimmed = false;
-          break;
-        case Messages::TouchEvent: {
-          if (isSleeping) {
-            auto touchInfo = touchPanel.GetTouchInfo();
-            if (touchInfo.isValid and not touchInfo.isTouch) {
-              OnTouchEvent();
-            }
-          }
-          ReloadIdleTimer();
-          displayApp.PushMessage(Pinetime::Applications::Display::Messages::TouchEvent);
-        } break;
-        case Messages::ButtonPushed:
-          if (isSleeping) {
-            OnButtonPushed();
-          }
-          ReloadIdleTimer();
-          displayApp.PushMessage(Pinetime::Applications::Display::Messages::ButtonPushed);
-          break;
-        case Messages::ButtonLongPressed:
-          ReloadIdleTimer();
-          displayApp.PushMessage(Pinetime::Applications::Display::Messages::ButtonLongPressed);
-          break;
-        case Messages::ButtonLongerPressed:
-          ReloadIdleTimer();
-          displayApp.PushMessage(Pinetime::Applications::Display::Messages::ButtonLongerPressed);
-          break;
-        case Messages::ButtonDoubleClicked:
-          ReloadIdleTimer();
-          displayApp.PushMessage(Pinetime::Applications::Display::Messages::ButtonDoubleClicked);
+          GoToRunning();
           break;
         case Messages::GoToSleep:
-          if (doNotGoToSleep) {
-            break;
-          }
-          isGoingToSleep = true;
-          NRF_LOG_INFO("[systemtask] Going to sleep");
-          xTimerStop(idleTimer, 0);
-          xTimerStop(dimTimer, 0);
-          displayApp.PushMessage(Pinetime::Applications::Display::Messages::GoToSleep);
+          GoToSleep();
           break;
         case Messages::OnNewTime:
-          ReloadIdleTimer();
-          displayApp.PushMessage(Pinetime::Applications::Display::Messages::UpdateDateTime);
-          if (isBleDiscoveryTimerRunning) {
-            bleDiscoveryTimer++;
-            if (bleDiscoveryTimer == 3) {
-              isBleDiscoveryTimerRunning = false;
-              nimbleController->StartDiscovery();
-            }
+          if (alarmController.IsEnabled()) {
+            alarmController.ScheduleAlarm();
           }
           break;
         case Messages::OnNewNotification:
-          if (isSleeping && !isWakingUp) {
-            OnNewNotification();
+          if (settingsController.GetNotificationStatus() == Pinetime::Controllers::Settings::Notification::On) {
+            if (IsSleeping()) {
+              GoToRunning();
+            }
+            displayApp.PushMessage(Pinetime::Applications::Display::Messages::NewNotification);
           }
-          displayApp.PushMessage(Pinetime::Applications::Display::Messages::NewNotification);
           break;
-        case Messages::OnNewCall:
-          if (isSleeping && !isWakingUp) {
-            OnNewCall();
-          }
-          motorController.RunForDuration(35);
-          displayApp.PushMessage(Pinetime::Applications::Display::Messages::NewNotification);
+        case Messages::SetOffAlarm:
+          GoToRunning();
+          displayApp.PushMessage(Pinetime::Applications::Display::Messages::AlarmTriggered);
           break;
         case Messages::BleConnected:
-          ReloadIdleTimer();
+          displayApp.PushMessage(Pinetime::Applications::Display::Messages::NotifyDeviceActivity);
           isBleDiscoveryTimerRunning = true;
-          bleDiscoveryTimer = 0;
-          displayApp.PushMessage(Pinetime::Applications::Display::Messages::BleConnected);
+          bleDiscoveryTimer = 5;
           break;
         case Messages::BleFirmwareUpdateStarted:
-          doNotGoToSleep = true;
-          if (isSleeping && !isWakingUp) {
-            OnNewNotification();
-          }
+          GoToRunning();
+          wakeLocksHeld++;
           displayApp.PushMessage(Pinetime::Applications::Display::Messages::BleFirmwareUpdateStarted);
           break;
         case Messages::BleFirmwareUpdateFinished:
-          doNotGoToSleep = false;
-          xTimerStart(dimTimer, 0);
-          if (bleController.IsFirmwareUpdating()) {
-            bleController.StopFirmwareUpdate();
-            displayApp.PushMessage(Pinetime::Applications::Display::Messages::BleFirmwareUpdateFinished);
-          } else {
-            displayApp.PushMessage(Pinetime::Applications::Display::Messages::Clock);
+          if (bleController.State() == Pinetime::Controllers::Ble::FirmwareUpdateStates::Validated) {
+            NVIC_SystemReset();
           }
+          wakeLocksHeld--;
           break;
         case Messages::StartFileTransfer:
           NRF_LOG_INFO("[systemtask] FS Started");
-          doNotGoToSleep = true;
-          if (isSleeping && !isWakingUp) {
-            OnNewNotification();
-          }
+          GoToRunning();
+          wakeLocksHeld++;
+          // TODO add intent of fs access icon or something
           break;
         case Messages::StopFileTransfer:
           NRF_LOG_INFO("[systemtask] FS Stopped");
-          doNotGoToSleep = false;
-          xTimerStart(dimTimer, 0);
+          wakeLocksHeld--;
+          // TODO add intent of fs access icon or something
           break;
         case Messages::OnTouchEvent:
-          ReloadIdleTimer();
-          break;
-        case Messages::OnButtonEvent:
-          ReloadIdleTimer();
-          break;
-        case Messages::OnDisplayTaskSleeping:
-          if (BootloaderVersion::IsValid()) {
-            if (!settingsController.IsWakeUpModeOn(Pinetime::Controllers::Settings::WakeUpMode::RaiseWrist) &&
-                !settingsController.IsWakeUpModeOn(Pinetime::Controllers::Settings::WakeUpMode::Shake) && !motionController.GetShakeWakeStatus()) {
-              motionSensor.Disable();
+          // Finish immediately if no new events
+          if (!touchHandler.ProcessTouchInfo(touchPanel.GetTouchInfo())) {
+            break;
+          }
+          if (state == SystemTaskState::Running) {
+            displayApp.PushMessage(Pinetime::Applications::Display::Messages::TouchEvent);
+          } else {
+            // If asleep, check for touch panel wake triggers
+            auto gesture = touchHandler.GestureGet();
+            if (settingsController.GetNotificationStatus() != Controllers::Settings::Notification::Sleep &&
+                gesture != Pinetime::Applications::TouchEvents::None &&
+                ((gesture == Pinetime::Applications::TouchEvents::DoubleTap &&
+                  settingsController.isWakeUpModeOn(Pinetime::Controllers::Settings::WakeUpMode::DoubleTap)) ||
+                 (gesture == Pinetime::Applications::TouchEvents::Tap &&
+                  settingsController.isWakeUpModeOn(Pinetime::Controllers::Settings::WakeUpMode::SingleTap)))) {
+              GoToRunning();
             }
           }
-          lcd.Sleep();
-          spiNorFlash.Sleep();
-          spi.Sleep();
-          twiMaster.Sleep();
-          isSleeping = true;
-          isGoingToSleep = false;
           break;
-        case Messages::BatteryPercentageUpdated:
-          nimbleController->NotifyBatteryLevel(batteryController.PercentRemaining());
-          break;
-        case Messages::OnPairing:
-          displayApp.PushMessage(Pinetime::Applications::Display::Messages::ShowPairingKey);
-          break;
-        case Messages::SetOffAlarm:
-          if (isSleeping && !isWakingUp) {
-            OnNewNotification();
+        case Messages::HandleButtonEvent: {
+          Controllers::ButtonActions action = Controllers::ButtonActions::None;
+          if (nrf_gpio_pin_read(Pinetime::PinMap::Button) == 0) {
+            action = buttonHandler.HandleEvent(Controllers::ButtonHandler::Events::Release);
+          } else {
+            action = buttonHandler.HandleEvent(Controllers::ButtonHandler::Events::Press);
+            // This is for faster wakeup, sacrificing special longpress and doubleclick handling while sleeping
+            if (IsSleeping()) {
+              fastWakeUpDone = true;
+              GoToRunning();
+              break;
+            }
           }
-          displayApp.PushMessage(Pinetime::Applications::Display::Messages::AlarmTriggered);
+          HandleButtonAction(action);
+        } break;
+        case Messages::HandleButtonTimerEvent: {
+          auto action = buttonHandler.HandleEvent(Controllers::ButtonHandler::Events::Timer);
+          HandleButtonAction(action);
+        } break;
+        case Messages::OnDisplayTaskSleeping:
+        case Messages::OnDisplayTaskAOD:
+          // The state was set to GoingToSleep when GoToSleep() was called
+          // If the state is no longer GoingToSleep, we have since transitioned back to Running
+          // In this case absorb the OnDisplayTaskSleeping/AOD
+          // as DisplayApp is about to receive GoToRunning
+          if (state != SystemTaskState::GoingToSleep) {
+            break;
+          }
+          if (BootloaderVersion::IsValid()) {
+            // First versions of the bootloader do not expose their version and cannot initialize the SPI NOR FLASH
+            // if it's in sleep mode. Avoid bricked device by disabling sleep mode on these versions.
+            spiNorFlash.Sleep();
+          }
+
+          // Must keep SPI awake when still updating the display for always on
+          if (msg == Messages::OnDisplayTaskSleeping) {
+            spi.Sleep();
+          }
+
+          // Double Tap needs the touch screen to be in normal mode
+          if (!settingsController.isWakeUpModeOn(Pinetime::Controllers::Settings::WakeUpMode::DoubleTap)) {
+            touchPanel.Sleep();
+          }
+
+          if (msg == Messages::OnDisplayTaskSleeping) {
+            state = SystemTaskState::Sleeping;
+          } else {
+            state = SystemTaskState::AODSleeping;
+          }
           break;
-        case Messages::StopRinging:
-          motorController.StopRinging();
+        case Messages::OnNewDay:
+          motionSensor.ResetStepCounter();
+          break;
+        case Messages::OnNewHour:
+          using Pinetime::Controllers::AlarmController;
+          if (settingsController.GetNotificationStatus() != Controllers::Settings::Notification::Sleep &&
+              settingsController.GetChimeOption() == Controllers::Settings::ChimesOption::Hours && !alarmController.IsAlerting()) {
+            GoToRunning();
+            displayApp.PushMessage(Pinetime::Applications::Display::Messages::Chime);
+          }
+          break;
+        case Messages::OnNewHalfHour:
+          using Pinetime::Controllers::AlarmController;
+          if (settingsController.GetNotificationStatus() != Controllers::Settings::Notification::Sleep &&
+              settingsController.GetChimeOption() == Controllers::Settings::ChimesOption::HalfHours && !alarmController.IsAlerting()) {
+            GoToRunning();
+            displayApp.PushMessage(Pinetime::Applications::Display::Messages::Chime);
+          }
+          break;
+        case Messages::OnChargingEvent:
+          batteryController.ReadPowerState();
+          GoToRunning();
           break;
         case Messages::MeasureBatteryTimerExpired:
           batteryController.MeasureVoltage();
           break;
-        case Messages::BleRadioEnableToggle:
-          if (bleController.IsRadioEnabled()) {
-            nimbleController->DisableRadio();
-          } else {
-            nimbleController->EnableRadio();
-            nimbleController->StartAdvertising();
-          }
+        case Messages::BatteryPercentageUpdated:
+          nimbleController.NotifyBatteryLevel(batteryController.PercentRemaining());
           break;
-        case Messages::OnChargingEvent:
-          motorController.RunForDuration(15);
-          ReloadIdleTimer();
+        case Messages::OnPairing:
+          GoToRunning();
+          displayApp.PushMessage(Pinetime::Applications::Display::Messages::ShowPairingKey);
+          break;
+        case Messages::BleRadioEnableToggle:
+          if (settingsController.GetBleRadioEnabled()) {
+            nimbleController.EnableRadio();
+          } else {
+            nimbleController.DisableRadio();
+          }
           break;
         default:
           break;
       }
     }
 
-    if (touchHandler.GetNewTouchInfo()) {
-      auto gesture = touchHandler.GestureGet();
-      if (gesture != Pinetime::Drivers::Cst816S::Gestures::None) {
-        isCancellingAvoidSleepMode = true;
-        ReloadIdleTimer();
+    UpdateMotion();
+    if (isBleDiscoveryTimerRunning) {
+      if (bleDiscoveryTimer == 0) {
+        isBleDiscoveryTimerRunning = false;
+        // Services discovery is deferred from 3 seconds to avoid the conflicts between the host communicating with the
+        // target and vice-versa. I'm not sure if this is the right way to handle this...
+        nimbleController.StartDiscovery();
+      } else {
+        bleDiscoveryTimer--;
       }
     }
 
     monitor.Process();
-    uint32_t systick_counter = nrf_rtc_counter_get(portNRF_RTC_REG);
-    dateTimeController.UpdateTime(systick_counter);
-    batteryController.Update();
-
-    if (!bleController.IsConnected()) {
-      fastAdvCount = 0;
-    }
-    if (nrf_gpio_pin_read(PinMap::PowerPresent) != isCharging) {
-      isCharging = !isCharging;
-      PushMessage(Messages::OnChargingEvent);
+    NoInit_BackUpTime = dateTimeController.CurrentDateTime();
+    if (nrf_gpio_pin_read(PinMap::Button) == 0) {
+      watchdog.Reload();
     }
   }
+#pragma clang diagnostic pop
 }
+
+void SystemTask::GoToRunning() {
+  if (state == SystemTaskState::Running) {
+    return;
+  }
+  if (state == SystemTaskState::Sleeping || state == SystemTaskState::AODSleeping) {
+    // SPI only switched off when entering Sleeping, not AOD or GoingToSleep
+    if (state == SystemTaskState::Sleeping) {
+      spi.Wakeup();
+    }
+
+    // Double Tap needs the touch screen to be in normal mode
+    if (!settingsController.isWakeUpModeOn(Pinetime::Controllers::Settings::WakeUpMode::DoubleTap)) {
+      touchPanel.Wakeup();
+    }
+
+    spiNorFlash.Wakeup();
+  }
+
+  displayApp.PushMessage(Pinetime::Applications::Display::Messages::GoToRunning);
+  heartRateApp.PushMessage(Pinetime::Applications::HeartRateTask::Messages::WakeUp);
+
+  if (bleController.IsRadioEnabled() && !bleController.IsConnected()) {
+    nimbleController.RestartFastAdv();
+  }
+
+  state = SystemTaskState::Running;
+};
+
+void SystemTask::GoToSleep() {
+  if (IsSleeping()) {
+    return;
+  }
+  if (IsSleepDisabled()) {
+    return;
+  }
+  NRF_LOG_INFO("[systemtask] Going to sleep");
+  if (settingsController.GetAlwaysOnDisplay()) {
+    displayApp.PushMessage(Pinetime::Applications::Display::Messages::GoToAOD);
+  } else {
+    displayApp.PushMessage(Pinetime::Applications::Display::Messages::GoToSleep);
+  }
+  heartRateApp.PushMessage(Pinetime::Applications::HeartRateTask::Messages::GoToSleep);
+
+  state = SystemTaskState::GoingToSleep;
+};
 
 void SystemTask::UpdateMotion() {
-  if (isGoingToSleep || isSleeping) {
+  // Unconditionally update motion
+  // Reading steps/motion characteristics must return up to date information even when not subscribed to notifications
+
+  auto motionValues = motionSensor.Process();
+
+  motionController.Update(motionValues.x, motionValues.y, motionValues.z, motionValues.steps);
+
+  if (settingsController.GetNotificationStatus() != Controllers::Settings::Notification::Sleep) {
+    if ((settingsController.isWakeUpModeOn(Pinetime::Controllers::Settings::WakeUpMode::RaiseWrist) &&
+         motionController.ShouldRaiseWake()) ||
+        (settingsController.isWakeUpModeOn(Pinetime::Controllers::Settings::WakeUpMode::Shake) &&
+         motionController.CurrentShakeSpeed() > settingsController.GetShakeThreshold())) {
+      GoToRunning();
+    }
+  }
+  if (settingsController.isWakeUpModeOn(Pinetime::Controllers::Settings::WakeUpMode::LowerWrist) && state == SystemTaskState::Running &&
+      motionController.ShouldLowerSleep()) {
+    GoToSleep();
+  }
+}
+
+void SystemTask::HandleButtonAction(Controllers::ButtonActions action) {
+  if (IsSleeping()) {
     return;
   }
 
-  if (!isSleeping) {
-    motionController.Update(motionSensor.ReadAccelerometer());
+  displayApp.PushMessage(Pinetime::Applications::Display::Messages::NotifyDeviceActivity);
+
+  using Actions = Controllers::ButtonActions;
+
+  switch (action) {
+    case Actions::Click:
+      // If the first action after fast wakeup is a click, it should be ignored.
+      if (!fastWakeUpDone) {
+        displayApp.PushMessage(Applications::Display::Messages::ButtonPushed);
+      }
+      break;
+    case Actions::DoubleClick:
+      displayApp.PushMessage(Applications::Display::Messages::ButtonDoubleClicked);
+      break;
+    case Actions::LongPress:
+      displayApp.PushMessage(Applications::Display::Messages::ButtonLongPressed);
+      break;
+    case Actions::LongerPress:
+      displayApp.PushMessage(Applications::Display::Messages::ButtonLongerPressed);
+      break;
+    default:
+      return;
   }
 
-  if (motionController.ShouldShakeWake(settingsController.GetShakeThreshold())) {
-    OnShakeWake();
-  }
-}
-
-void SystemTask::OnButtonPushed() {
-  if (isGoingToSleep) {
-    return;
-  }
-  if (!isSleeping) {
-    NRF_LOG_INFO("[systemtask] Button pushed");
-    PushMessage(Messages::OnButtonEvent);
-    displayApp.PushMessage(Pinetime::Applications::Display::Messages::ButtonPushed);
-  } else {
-    if (!isWakingUp) {
-      NRF_LOG_INFO("[systemtask] Button pushed, waking up");
-      OnWakeUp();
-    }
-  }
-}
-
-void SystemTask::OnButtonLongPressed() {
-  if (!isSleeping) {
-    PushMessage(Messages::OnButtonEvent);
-    displayApp.PushMessage(Pinetime::Applications::Display::Messages::ButtonLongPressed);
-  }
-}
-
-void SystemTask::OnButtonLongerPressed() {
-  if (!isSleeping) {
-    PushMessage(Messages::OnButtonEvent);
-    displayApp.PushMessage(Pinetime::Applications::Display::Messages::ButtonLongerPressed);
-  }
-}
-
-void SystemTask::OnButtonDoubleClicked() {
-  if (isSleeping && !isWakingUp) {
-    OnWakeUp();
-  } else {
-    PushMessage(Messages::OnButtonEvent);
-    displayApp.PushMessage(Pinetime::Applications::Display::Messages::ButtonDoubleClicked);
-  }
-}
-
-void SystemTask::OnTouchEvent() {
-  if (!isSleeping) {
-    PushMessage(Messages::OnTouchEvent);
-  } else if (!isWakingUp) {
-    if (settingsController.isWakeUpModeOn(Pinetime::Controllers::Settings::WakeUpMode::SingleTap) or
-        settingsController.isWakeUpModeOn(Pinetime::Controllers::Settings::WakeUpMode::DoubleTap)) {
-      OnWakeUp();
-    }
-  }
+  fastWakeUpDone = false;
 }
 
 void SystemTask::PushMessage(System::Messages msg) {
@@ -438,57 +490,5 @@ void SystemTask::PushMessage(System::Messages msg) {
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
   } else {
     xQueueSend(systemTasksMsgQueue, &msg, portMAX_DELAY);
-  }
-}
-
-void SystemTask::OnWakeUp() {
-  isWakingUp = true;
-  PushMessage(Messages::GoToRunning);
-}
-
-void SystemTask::OnShakeWake() {
-  if (settingsController.isWakeUpModeOn(Pinetime::Controllers::Settings::WakeUpMode::Shake)) {
-    OnWakeUp();
-  }
-}
-
-void SystemTask::OnNewNotification() {
-  if (settingsController.GetNotificationStatus() == Pinetime::Controllers::Settings::Notification::On) {
-    OnWakeUp();
-  }
-  motorController.RunForDuration(35);
-}
-
-void SystemTask::OnNewCall() {
-  if (settingsController.GetNotificationStatus() == Pinetime::Controllers::Settings::Notification::On) {
-    OnWakeUp();
-  }
-  motorController.RunForDuration(35);
-}
-
-void SystemTask::ReloadIdleTimer() {
-  if (isSleeping || isGoingToSleep) {
-    return;
-  }
-  if (isDimmed) {
-    displayApp.PushMessage(Pinetime::Applications::Display::Messages::RestoreBrightness);
-    isDimmed = false;
-  }
-  xTimerReset(idleTimer, 0);
-  xTimerReset(dimTimer, 0);
-}
-
-void SystemTask::OnIdle() {
-  if (doNotGoToSleep) {
-    return;
-  }
-  NRF_LOG_INFO("Idle timeout -> Going to sleep");
-  PushMessage(Messages::GoToSleep);
-}
-
-void SystemTask::OnDim() {
-  if (!isDimmed) {
-    displayApp.PushMessage(Pinetime::Applications::Display::Messages::DimScreen);
-    isDimmed = true;
   }
 }
