@@ -17,7 +17,7 @@
 #include "displayapp/screens/Screen.h"
 #include "components/motor/MotorController.h"
 #include "components/motion/MotionController.h"
-#include "components/timer/TimerController.h"
+// #include "components/timer/TimerController.h"
 #include "components/alarm/AlarmController.h"
 #include "components/brightness/BrightnessController.h"
 #include "touchhandler/TouchHandler.h"
