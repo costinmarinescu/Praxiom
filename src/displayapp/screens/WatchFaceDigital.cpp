@@ -43,12 +43,6 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
     basePraxiomAge(0),
     lastSyncTime(0) {
 
-  // Read initial value from PraxiomService
-  uint32_t initialAge = praxiomService.GetBasePraxiomAge();
-  if (initialAge >= 18 && initialAge <= 120) {
-    basePraxiomAge = static_cast<int>(initialAge);
-  }
-
   // Create Praxiom brand gradient background (Orange/Amber to Teal/Cyan)
   lv_obj_t* background_gradient = lv_obj_create(lv_scr_act(), nullptr);
   lv_obj_set_size(background_gradient, 240, 240);
@@ -69,18 +63,11 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
   lv_obj_set_style_local_text_color(labelPraxiomAge, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));
   lv_obj_align(labelPraxiomAge, lv_scr_act(), LV_ALIGN_CENTER, 0, -80);
 
-  // ✅ FIX: Create age number label with proper formatting
+  // Create age number label - START WITH "---" as waiting indicator
   labelPraxiomAgeNumber = lv_label_create(lv_scr_act(), nullptr);
   lv_obj_set_style_local_text_font(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_42);
-  
-  // Initialize with proper formatting - use lv_label_set_text_fmt like the time display
-  if (basePraxiomAge > 0) {
-    lv_label_set_text_fmt(labelPraxiomAgeNumber, "%d", basePraxiomAge);
-    lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x00FF00));
-  } else {
-    lv_label_set_text_fmt(labelPraxiomAgeNumber, "%d", 0);
-    lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));
-  }
+  lv_label_set_text_static(labelPraxiomAgeNumber, "---");  // Use static text first
+  lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));
   lv_obj_align(labelPraxiomAgeNumber, lv_scr_act(), LV_ALIGN_CENTER, 0, -10);
 
   // Time label - BLACK
@@ -195,28 +182,36 @@ void WatchFaceDigital::Refresh() {
     lv_obj_realign(stepValue);
   }
 
-  // ✅ FIX: Simplified Bio-Age update logic - only update when value changes
+  // ✅ SIMPLIFIED Bio-Age update - always read from service and update if changed
+  static uint32_t lastDisplayedAge = 999;  // Track what we're currently showing
   uint32_t bleAge = praxiomService.GetBasePraxiomAge();
   
-  if (bleAge >= 18 && bleAge <= 120) {
-    // Valid age received from app
-    if (bleAge != static_cast<uint32_t>(basePraxiomAge)) {
-      // Age changed - update display
+  // Always update if value is different from what's displayed
+  if (bleAge != lastDisplayedAge) {
+    lastDisplayedAge = bleAge;  // Remember what we're showing
+    
+    if (bleAge >= 18 && bleAge <= 120) {
+      // Valid age - display it in GREEN
       basePraxiomAge = static_cast<int>(bleAge);
       lastSyncTime = dateTimeController.CurrentDateTime().time_since_epoch().count();
       
-      // Update display using lv_label_set_text_fmt (same as time display)
-      lv_label_set_text_fmt(labelPraxiomAgeNumber, "%d", basePraxiomAge);
+      // Create a buffer to hold the formatted string
+      static char ageBuffer[4];  // Max 3 digits + null terminator
+      snprintf(ageBuffer, sizeof(ageBuffer), "%d", basePraxiomAge);
+      
+      // Update the label text
+      lv_label_set_text(labelPraxiomAgeNumber, ageBuffer);
       lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, 
         LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x00FF00));
       lv_obj_realign(labelPraxiomAgeNumber);
+      
+    } else if (bleAge == 0) {
+      // No data yet - show "---" in WHITE
+      basePraxiomAge = 0;
+      lv_label_set_text_static(labelPraxiomAgeNumber, "---");
+      lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, 
+        LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));
+      lv_obj_realign(labelPraxiomAgeNumber);
     }
-  } else if (bleAge == 0 && basePraxiomAge != 0) {
-    // Reset to waiting state
-    basePraxiomAge = 0;
-    lv_label_set_text_fmt(labelPraxiomAgeNumber, "%d", 0);
-    lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, 
-      LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));
-    lv_obj_realign(labelPraxiomAgeNumber);
   }
 }
