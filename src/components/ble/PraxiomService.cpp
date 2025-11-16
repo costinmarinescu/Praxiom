@@ -1,104 +1,156 @@
-/*  Copyright (C) 2024 Praxiom Health
-
-    This file is part of Praxiom.
-
-    Praxiom is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published
-    by the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    Praxiom is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>.
-*/
-
 #include "components/ble/PraxiomService.h"
-
-#include <cstring>
 #include <nrf_log.h>
 
 using namespace Pinetime::Controllers;
 
 namespace {
-  uint32_t ToUInt32(const uint8_t* data) {
-    return data[0] + (data[1] << 8) + (data[2] << 16) + (data[3] << 24);
+  int PraxiomServiceCallback(uint16_t conn_handle, uint16_t attr_handle,
+                             struct ble_gatt_access_ctxt* ctxt, void* arg) {
+    auto* praxiomService = static_cast<PraxiomService*>(arg);
+    return praxiomService->OnBioAgeWrite(conn_handle, attr_handle, ctxt);
+  }
+  
+  int HealthMetricsCallback(uint16_t conn_handle, uint16_t attr_handle,
+                           struct ble_gatt_access_ctxt* ctxt, void* arg) {
+    auto* praxiomService = static_cast<PraxiomService*>(arg);
+    return praxiomService->OnHealthMetricsRead(conn_handle, attr_handle, ctxt);
+  }
+  
+  int StatusCallback(uint16_t conn_handle, uint16_t attr_handle,
+                    struct ble_gatt_access_ctxt* ctxt, void* arg) {
+    auto* praxiomService = static_cast<PraxiomService*>(arg);
+    return praxiomService->OnStatusRead(conn_handle, attr_handle, ctxt);
   }
 }
 
-int PraxiomCallback(uint16_t /*connHandle*/, uint16_t /*attrHandle*/, struct ble_gatt_access_ctxt* ctxt, void* arg) {
-  return static_cast<Pinetime::Controllers::PraxiomService*>(arg)->OnCommand(ctxt);
-}
-
-PraxiomService::PraxiomService() : basePraxiomAge(0) {
-  // ✅ CRITICAL: Initialize basePraxiomAge to 0 in constructor initializer list
+PraxiomService::PraxiomService() 
+  : bioAge(0.0f),
+    bioAgeReceived(false),
+    heartRate(0),
+    steps(0),
+    batteryPercent(0),
+    statusFlags(0) {
   
-  NRF_LOG_INFO("🎯 PraxiomService constructor - basePraxiomAge = 0");
-  
-  // ✅ CRITICAL: Setup characteristic definition
   characteristicDefinition[0] = {
-    .uuid = &praxiomBioAgeCharUuid.u,
-    .access_cb = PraxiomCallback,
+    .uuid = &bioAgeCharBaseUuid.u,
+    .access_cb = PraxiomServiceCallback,
     .arg = this,
-    .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_NOTIFY,
-    .val_handle = nullptr,
+    .flags = BLE_GATT_CHR_F_WRITE,
+    .val_handle = &bioAgeHandle
   };
-  characteristicDefinition[1] = {0};
-
-  // ✅ CRITICAL: Setup service definition
+  
+  characteristicDefinition[1] = {
+    .uuid = &healthMetricsCharBaseUuid.u,
+    .access_cb = HealthMetricsCallback,
+    .arg = this,
+    .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY,
+    .val_handle = &healthMetricsHandle
+  };
+  
+  characteristicDefinition[2] = {
+    .uuid = &statusCharBaseUuid.u,
+    .access_cb = StatusCallback,
+    .arg = this,
+    .flags = BLE_GATT_CHR_F_READ,
+    .val_handle = &statusHandle
+  };
+  
+  characteristicDefinition[3] = {0};
+  
   serviceDefinition[0] = {
     .type = BLE_GATT_SVC_TYPE_PRIMARY,
-    .uuid = &praxiomServiceUuid.u,
+    .uuid = &praxiomServiceBaseUuid.u,
     .characteristics = characteristicDefinition
   };
+  
   serviceDefinition[1] = {0};
 }
 
 void PraxiomService::Init() {
-  ble_gatts_count_cfg(serviceDefinition);
-  ble_gatts_add_svcs(serviceDefinition);
-  
-  NRF_LOG_INFO("🎯 PraxiomService initialized - current basePraxiomAge = %lu", basePraxiomAge);
-}
-
-int PraxiomService::OnCommand(struct ble_gatt_access_ctxt* ctxt) {
-  if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
-    // Handle WRITE operation - mobile app sending Bio-Age
-    const auto* buffer = ctxt->om;
-    const auto* dataBuffer = buffer->om_data;
-    
-    NRF_LOG_INFO("📥 WRITE operation received");
-    
-    // Extract 4-byte uint32_t age value
-    if (OS_MBUF_PKTLEN(buffer) == sizeof(uint32_t)) {
-      uint32_t receivedAge = ToUInt32(dataBuffer);
-      
-      NRF_LOG_INFO("📊 Raw bytes: [%u, %u, %u, %u]", 
-                   dataBuffer[0], dataBuffer[1], dataBuffer[2], dataBuffer[3]);
-      NRF_LOG_INFO("📊 Converted to uint32: %lu", receivedAge);
-      NRF_LOG_INFO("📝 Before: basePraxiomAge = %lu", basePraxiomAge);
-      
-      // ✅ Store the value (validation happens in WatchFaceDigital)
-      basePraxiomAge = receivedAge;
-      
-      NRF_LOG_INFO("✅ After: basePraxiomAge = %lu", basePraxiomAge);
-    } else {
-      NRF_LOG_WARNING("⚠️ Invalid Praxiom Age data length: %d (expected 4)", OS_MBUF_PKTLEN(buffer));
-    }
-    
-    return 0;
-  } else if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR) {
-    // Handle READ operation - mobile app reading current Bio-Age
-    NRF_LOG_INFO("📤 READ operation: returning basePraxiomAge = %lu", basePraxiomAge);
-    
-    os_mbuf_append(ctxt->om, &basePraxiomAge, sizeof(basePraxiomAge));
-    
-    return 0;
+  int res = ble_gatts_count_cfg(serviceDefinition);
+  if (res != 0) {
+    NRF_LOG_ERROR("PraxiomService: ble_gatts_count_cfg failed: %d", res);
+    return;
   }
   
-  NRF_LOG_WARNING("⚠️ Unknown operation: %d", ctxt->op);
+  res = ble_gatts_add_svcs(serviceDefinition);
+  if (res != 0) {
+    NRF_LOG_ERROR("PraxiomService: ble_gatts_add_svcs failed: %d", res);
+    return;
+  }
+  
+  NRF_LOG_INFO("PraxiomService initialized");
+}
+
+int PraxiomService::OnBioAgeWrite(uint16_t conn_handle, uint16_t attr_handle,
+                                  struct ble_gatt_access_ctxt* ctxt) {
+  if (ctxt->op != BLE_GATT_ACCESS_OP_WRITE_CHR) {
+    return BLE_ATT_ERR_UNLIKELY;
+  }
+  
+  if (ble_hs_mbuf_to_flat(ctxt->om, &bioAge, sizeof(bioAge), nullptr) != sizeof(bioAge)) {
+    return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+  }
+  
+  bioAgeReceived = true;
+  statusFlags |= 0x01; // Set bio-age received flag
+  
+  NRF_LOG_INFO("PraxiomService: Bio-Age received: %d.%d years", 
+               (int)bioAge, (int)((bioAge - (int)bioAge) * 10));
+  
   return 0;
+}
+
+int PraxiomService::OnHealthMetricsRead(uint16_t conn_handle, uint16_t attr_handle,
+                                        struct ble_gatt_access_ctxt* ctxt) {
+  if (ctxt->op != BLE_GATT_ACCESS_OP_READ_CHR) {
+    return BLE_ATT_ERR_UNLIKELY;
+  }
+  
+  uint8_t buffer[7];
+  buffer[0] = heartRate;
+  buffer[1] = (steps >> 24) & 0xFF;
+  buffer[2] = (steps >> 16) & 0xFF;
+  buffer[3] = (steps >> 8) & 0xFF;
+  buffer[4] = steps & 0xFF;
+  buffer[5] = batteryPercent;
+  buffer[6] = statusFlags;
+  
+  int res = os_mbuf_append(ctxt->om, buffer, sizeof(buffer));
+  return (res == 0) ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+}
+
+int PraxiomService::OnStatusRead(uint16_t conn_handle, uint16_t attr_handle,
+                                 struct ble_gatt_access_ctxt* ctxt) {
+  if (ctxt->op != BLE_GATT_ACCESS_OP_READ_CHR) {
+    return BLE_ATT_ERR_UNLIKELY;
+  }
+  
+  int res = os_mbuf_append(ctxt->om, &statusFlags, sizeof(statusFlags));
+  return (res == 0) ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+}
+
+void PraxiomService::UpdateHeartRate(uint8_t hr) {
+  heartRate = hr;
+}
+
+void PraxiomService::UpdateSteps(uint32_t s) {
+  steps = s;
+}
+
+void PraxiomService::UpdateBattery(uint8_t bp) {
+  batteryPercent = bp;
+}
+
+void PraxiomService::NotifyHealthMetrics() {
+  uint8_t buffer[7];
+  buffer[0] = heartRate;
+  buffer[1] = (steps >> 24) & 0xFF;
+  buffer[2] = (steps >> 16) & 0xFF;
+  buffer[3] = (steps >> 8) & 0xFF;
+  buffer[4] = steps & 0xFF;
+  buffer[5] = batteryPercent;
+  buffer[6] = statusFlags;
+  
+  ble_gatts_notify_custom(0, healthMetricsHandle, buffer, sizeof(buffer));
 }
