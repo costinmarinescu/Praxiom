@@ -218,4 +218,277 @@ void SystemTask::Work() {
           break;
         case Messages::ButtonDoubleClicked:
           ReloadIdleTimer();
-          displayApp.PushMessage(Pinetime
+          displayApp.PushMessage(Pinetime::Applications::Display::Messages::ButtonDoubleClicked);
+          break;
+        case Messages::GoToSleep:
+          if (doNotGoToSleep) {
+            break;
+          }
+          isGoingToSleep = true;
+          NRF_LOG_INFO("[systemtask] Going to sleep");
+          xTimerStop(idleTimer, 0);
+          xTimerStop(dimTimer, 0);
+          displayApp.PushMessage(Pinetime::Applications::Display::Messages::GoToSleep);
+          break;
+        case Messages::OnNewTime:
+          ReloadIdleTimer();
+          displayApp.PushMessage(Pinetime::Applications::Display::Messages::UpdateDateTime);
+          if (isBleDiscoveryTimerRunning) {
+            bleDiscoveryTimer++;
+            if (bleDiscoveryTimer == 3) {
+              isBleDiscoveryTimerRunning = false;
+              nimbleController->StartDiscovery();
+            }
+          }
+          break;
+        case Messages::OnNewNotification:
+          if (isSleeping && !isWakingUp) {
+            OnNewNotification();
+          }
+          displayApp.PushMessage(Pinetime::Applications::Display::Messages::NewNotification);
+          break;
+        case Messages::OnNewCall:
+          if (isSleeping && !isWakingUp) {
+            OnNewCall();
+          }
+          motorController.RunForDuration(35);
+          displayApp.PushMessage(Pinetime::Applications::Display::Messages::NewNotification);
+          break;
+        case Messages::BleConnected:
+          ReloadIdleTimer();
+          isBleDiscoveryTimerRunning = true;
+          bleDiscoveryTimer = 0;
+          displayApp.PushMessage(Pinetime::Applications::Display::Messages::BleConnected);
+          break;
+        case Messages::BleFirmwareUpdateStarted:
+          doNotGoToSleep = true;
+          if (isSleeping && !isWakingUp) {
+            OnNewNotification();
+          }
+          displayApp.PushMessage(Pinetime::Applications::Display::Messages::BleFirmwareUpdateStarted);
+          break;
+        case Messages::BleFirmwareUpdateFinished:
+          doNotGoToSleep = false;
+          xTimerStart(dimTimer, 0);
+          if (bleController.IsFirmwareUpdating()) {
+            bleController.StopFirmwareUpdate();
+            displayApp.PushMessage(Pinetime::Applications::Display::Messages::BleFirmwareUpdateFinished);
+          } else {
+            displayApp.PushMessage(Pinetime::Applications::Display::Messages::Clock);
+          }
+          break;
+        case Messages::StartFileTransfer:
+          NRF_LOG_INFO("[systemtask] FS Started");
+          doNotGoToSleep = true;
+          if (isSleeping && !isWakingUp) {
+            OnNewNotification();
+          }
+          break;
+        case Messages::StopFileTransfer:
+          NRF_LOG_INFO("[systemtask] FS Stopped");
+          doNotGoToSleep = false;
+          xTimerStart(dimTimer, 0);
+          break;
+        case Messages::OnTouchEvent:
+          ReloadIdleTimer();
+          break;
+        case Messages::OnButtonEvent:
+          ReloadIdleTimer();
+          break;
+        case Messages::OnDisplayTaskSleeping:
+          if (BootloaderVersion::IsValid()) {
+            if (!settingsController.IsWakeUpModeOn(Pinetime::Controllers::Settings::WakeUpMode::RaiseWrist) &&
+                !settingsController.IsWakeUpModeOn(Pinetime::Controllers::Settings::WakeUpMode::Shake) && !motionController.GetShakeWakeStatus()) {
+              motionSensor.Disable();
+            }
+          }
+          lcd.Sleep();
+          spiNorFlash.Sleep();
+          spi.Sleep();
+          twiMaster.Sleep();
+          isSleeping = true;
+          isGoingToSleep = false;
+          break;
+        case Messages::BatteryPercentageUpdated:
+          nimbleController->NotifyBatteryLevel(batteryController.PercentRemaining());
+          break;
+        case Messages::OnPairing:
+          displayApp.PushMessage(Pinetime::Applications::Display::Messages::ShowPairingKey);
+          break;
+        case Messages::SetOffAlarm:
+          if (isSleeping && !isWakingUp) {
+            OnNewNotification();
+          }
+          displayApp.PushMessage(Pinetime::Applications::Display::Messages::AlarmTriggered);
+          break;
+        case Messages::StopRinging:
+          motorController.StopRinging();
+          break;
+        case Messages::MeasureBatteryTimerExpired:
+          batteryController.MeasureVoltage();
+          break;
+        case Messages::BleRadioEnableToggle:
+          if (bleController.IsRadioEnabled()) {
+            nimbleController->DisableRadio();
+          } else {
+            nimbleController->EnableRadio();
+            nimbleController->StartAdvertising();
+          }
+          break;
+        case Messages::OnChargingEvent:
+          motorController.RunForDuration(15);
+          ReloadIdleTimer();
+          break;
+        default:
+          break;
+      }
+    }
+
+    if (touchHandler.GetNewTouchInfo()) {
+      auto gesture = touchHandler.GestureGet();
+      if (gesture != Pinetime::Drivers::Cst816S::Gestures::None) {
+        isCancellingAvoidSleepMode = true;
+        ReloadIdleTimer();
+      }
+    }
+
+    monitor.Process();
+    uint32_t systick_counter = nrf_rtc_counter_get(portNRF_RTC_REG);
+    dateTimeController.UpdateTime(systick_counter);
+    batteryController.Update();
+
+    if (!bleController.IsConnected()) {
+      fastAdvCount = 0;
+    }
+    if (nrf_gpio_pin_read(PinMap::PowerPresent) != isCharging) {
+      isCharging = !isCharging;
+      PushMessage(Messages::OnChargingEvent);
+    }
+  }
+}
+
+void SystemTask::UpdateMotion() {
+  if (isGoingToSleep || isSleeping) {
+    return;
+  }
+
+  if (!isSleeping) {
+    motionController.Update(motionSensor.ReadAccelerometer());
+  }
+
+  if (motionController.ShouldShakeWake(settingsController.GetShakeThreshold())) {
+    OnShakeWake();
+  }
+}
+
+void SystemTask::OnButtonPushed() {
+  if (isGoingToSleep) {
+    return;
+  }
+  if (!isSleeping) {
+    NRF_LOG_INFO("[systemtask] Button pushed");
+    PushMessage(Messages::OnButtonEvent);
+    displayApp.PushMessage(Pinetime::Applications::Display::Messages::ButtonPushed);
+  } else {
+    if (!isWakingUp) {
+      NRF_LOG_INFO("[systemtask] Button pushed, waking up");
+      OnWakeUp();
+    }
+  }
+}
+
+void SystemTask::OnButtonLongPressed() {
+  if (!isSleeping) {
+    PushMessage(Messages::OnButtonEvent);
+    displayApp.PushMessage(Pinetime::Applications::Display::Messages::ButtonLongPressed);
+  }
+}
+
+void SystemTask::OnButtonLongerPressed() {
+  if (!isSleeping) {
+    PushMessage(Messages::OnButtonEvent);
+    displayApp.PushMessage(Pinetime::Applications::Display::Messages::ButtonLongerPressed);
+  }
+}
+
+void SystemTask::OnButtonDoubleClicked() {
+  if (isSleeping && !isWakingUp) {
+    OnWakeUp();
+  } else {
+    PushMessage(Messages::OnButtonEvent);
+    displayApp.PushMessage(Pinetime::Applications::Display::Messages::ButtonDoubleClicked);
+  }
+}
+
+void SystemTask::OnTouchEvent() {
+  if (!isSleeping) {
+    PushMessage(Messages::OnTouchEvent);
+  } else if (!isWakingUp) {
+    if (settingsController.isWakeUpModeOn(Pinetime::Controllers::Settings::WakeUpMode::SingleTap) or
+        settingsController.isWakeUpModeOn(Pinetime::Controllers::Settings::WakeUpMode::DoubleTap)) {
+      OnWakeUp();
+    }
+  }
+}
+
+void SystemTask::PushMessage(System::Messages msg) {
+  if (in_isr()) {
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    xQueueSendFromISR(systemTasksMsgQueue, &msg, &xHigherPriorityTaskWoken);
+    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+  } else {
+    xQueueSend(systemTasksMsgQueue, &msg, portMAX_DELAY);
+  }
+}
+
+void SystemTask::OnWakeUp() {
+  isWakingUp = true;
+  PushMessage(Messages::GoToRunning);
+}
+
+void SystemTask::OnShakeWake() {
+  if (settingsController.isWakeUpModeOn(Pinetime::Controllers::Settings::WakeUpMode::Shake)) {
+    OnWakeUp();
+  }
+}
+
+void SystemTask::OnNewNotification() {
+  if (settingsController.GetNotificationStatus() == Pinetime::Controllers::Settings::Notification::On) {
+    OnWakeUp();
+  }
+  motorController.RunForDuration(35);
+}
+
+void SystemTask::OnNewCall() {
+  if (settingsController.GetNotificationStatus() == Pinetime::Controllers::Settings::Notification::On) {
+    OnWakeUp();
+  }
+  motorController.RunForDuration(35);
+}
+
+void SystemTask::ReloadIdleTimer() {
+  if (isSleeping || isGoingToSleep) {
+    return;
+  }
+  if (isDimmed) {
+    displayApp.PushMessage(Pinetime::Applications::Display::Messages::RestoreBrightness);
+    isDimmed = false;
+  }
+  xTimerReset(idleTimer, 0);
+  xTimerReset(dimTimer, 0);
+}
+
+void SystemTask::OnIdle() {
+  if (doNotGoToSleep) {
+    return;
+  }
+  NRF_LOG_INFO("Idle timeout -> Going to sleep");
+  PushMessage(Messages::GoToSleep);
+}
+
+void SystemTask::OnDim() {
+  if (!isDimmed) {
+    displayApp.PushMessage(Pinetime::Applications::Display::Messages::DimScreen);
+    isDimmed = true;
+  }
+}
