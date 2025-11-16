@@ -1,8 +1,10 @@
 #pragma once
 
 #include <cstdint>
+#include <vector>
+#include <memory>
 
-#define min // workaround: nimble's min/max macros conflict with libstdc++
+#define min
 #define max
 #include <host/ble_gap.h>
 #undef max
@@ -11,23 +13,26 @@
 #include "AlertNotificationClient.h"
 #include "AlertNotificationService.h"
 #include "BatteryInformationService.h"
+#include "BleController.h"
 #include "CurrentTimeClient.h"
 #include "CurrentTimeService.h"
 #include "DeviceInformationService.h"
 #include "DfuService.h"
-#include "FSService.h"
 #include "HeartRateService.h"
 #include "ImmediateAlertService.h"
-#include "MotionService.h"
 #include "MusicService.h"
 #include "NavigationService.h"
 #include "ServiceDiscovery.h"
-#include "SimpleWeatherService.h"
-#include "PraxiomService.h"  // ← ADDED
+#include "MotionService.h"
+#include "weather/WeatherService.h"
+#include "PraxiomService.h"
 
 namespace Pinetime {
   namespace Drivers {
     class SpiNorFlash;
+  }
+  namespace Drivers {
+    class I2C;
   }
   namespace Controllers {
     class Ble;
@@ -37,18 +42,20 @@ namespace Pinetime {
     class HeartRateController;
     class MotionController;
     class FS;
+    class PraxiomController;
 
     class NimbleController {
     public:
       NimbleController(Pinetime::System::SystemTask& systemTask,
-                       Pinetime::Controllers::Ble& bleController,
+                       Ble& bleController,
                        DateTime& dateTimeController,
                        NotificationManager& notificationManager,
-                       Controllers::Battery& batteryController,
+                       Battery& batteryController,
                        Pinetime::Drivers::SpiNorFlash& spiNorFlash,
-                       Controllers::HeartRateController& heartRateController,
-                       Controllers::MotionController& motionController,
-                       Controllers::FS& fs);
+                       HeartRateController& heartRateController,
+                       MotionController& motionController,
+                       Pinetime::Controllers::FS& fs,
+                       PraxiomController& praxiomController);
 
       void Init();
       void StartAdvertising();
@@ -65,48 +72,20 @@ namespace Pinetime {
 
       void StartDiscovery();
 
-      Pinetime::Controllers::MusicService& GetMusicService() {
+      Pinetime::Controllers::MusicService& music() {
         return musicService;
       }
-      Pinetime::Controllers::NavigationService& GetNavigationService() {
-        return navigationService;
+      Pinetime::Controllers::NavigationService& navigation() {
+        return navService;
       }
-      Pinetime::Controllers::AlertNotificationService& GetAlertNotificationService() {
+      Pinetime::Controllers::AlertNotificationService& alertService() {
         return anService;
       }
-      Pinetime::Controllers::SimpleWeatherService& GetWeatherService() {
+      Pinetime::Controllers::WeatherService& weather() {
         return weatherService;
       }
-      Pinetime::Controllers::PraxiomService& GetPraxiomService() {  // ← ADDED
-        return praxiomService;
-      }
 
-      // ========== BACKWARD COMPATIBILITY WRAPPERS (START) ==========
-      // These methods provide backward compatibility with old code that
-      // uses the short method names instead of the Get* prefix
-      
-      Pinetime::Controllers::MusicService& music() {
-        return GetMusicService();
-      }
-      
-      Pinetime::Controllers::NavigationService& navigation() {
-        return GetNavigationService();
-      }
-      
-      Pinetime::Controllers::SimpleWeatherService& weather() {
-        return GetWeatherService();
-      }
-      
-      Pinetime::Controllers::AlertNotificationService& alertService() {
-        return GetAlertNotificationService();
-      }
-      
-      uint16_t connHandle() {
-        return GetConnHandle();
-      }
-      // ========== BACKWARD COMPATIBILITY WRAPPERS (END) ==========
-
-      uint16_t GetConnHandle() const;
+      uint16_t connHandle();
       void NotifyBatteryLevel(uint8_t level);
 
       void RestartFastAdv() {
@@ -122,13 +101,12 @@ namespace Pinetime {
 
       static constexpr const char* deviceName = "InfiniTime";
       Pinetime::System::SystemTask& systemTask;
-      Pinetime::Controllers::Ble& bleController;
+      Ble& bleController;
       DateTime& dateTimeController;
       NotificationManager& notificationManager;
       Pinetime::Drivers::SpiNorFlash& spiNorFlash;
-      Controllers::FS& fs;
+      Pinetime::Controllers::FS& fs;
       Pinetime::Controllers::DfuService dfuService;
-      Pinetime::Controllers::FSService fsService;
 
       DeviceInformationService deviceInformationService;
       CurrentTimeClient currentTimeClient;
@@ -136,14 +114,13 @@ namespace Pinetime {
       AlertNotificationClient alertNotificationClient;
       CurrentTimeService currentTimeService;
       MusicService musicService;
-      SimpleWeatherService weatherService;
-      NavigationService navigationService;
+      WeatherService weatherService;
+      NavigationService navService;
       BatteryInformationService batteryInformationService;
       ImmediateAlertService immediateAlertService;
       HeartRateService heartRateService;
-      MotionService motionService;  // ← ADDED
-      PraxiomService praxiomService;  // ← ADDED
-      ServiceDiscovery serviceDiscovery;
+      MotionService motionService;
+      PraxiomService praxiomService;
 
       uint8_t addrType;
       uint16_t connectionHandle = BLE_HS_CONN_HANDLE_NONE;
@@ -153,6 +130,8 @@ namespace Pinetime {
       ble_uuid128_t dfuServiceUuid {
         .u {.type = BLE_UUID_TYPE_128},
         .value = {0x23, 0xD1, 0xBC, 0xEA, 0x5F, 0x78, 0x23, 0x15, 0xDE, 0xEF, 0x12, 0x12, 0x30, 0x15, 0x00, 0x00}};
+
+      ServiceDiscovery serviceDiscovery;
     };
 
     static NimbleController* nptr;
