@@ -1,113 +1,157 @@
 #pragma once
-
 #include <FreeRTOS.h>
-#include <task.h>
-#include <drivers/St7789.h>
-#include <drivers/Cst816s.h>
-#include <bits/unique_ptr.h>
 #include <queue.h>
-#include "Apps.h"
-#include "LittleVgl.h"
-#include "TouchEvents.h"
-#include "components/battery/BatteryController.h"
-#include "components/ble/BleController.h"
-#include "components/datetime/DateTimeController.h"
-#include "components/ble/NotificationManager.h"
+#include <task.h>
+#include <memory>
+#include <systemtask/Messages.h>
+#include "displayapp/apps/Apps.h"
+#include "displayapp/LittleVgl.h"
+#include "displayapp/TouchEvents.h"
+#include "components/brightness/BrightnessController.h"
+#include "components/motor/MotorController.h"
+#include "components/firmwarevalidator/FirmwareValidator.h"
 #include "components/settings/Settings.h"
 #include "displayapp/screens/Screen.h"
-#include "components/motor/MotorController.h"
-#include "components/motion/MotionController.h"
-// #include "components/timer/TimerController.h"
+#include "components/timer/Timer.h"
+#include "components/stopwatch/StopWatchController.h"
 #include "components/alarm/AlarmController.h"
-#include "components/brightness/BrightnessController.h"
 #include "touchhandler/TouchHandler.h"
-#include "buttonhandler/ButtonHandler.h"
-#include "components/fs/FS.h"
-#include "components/praxiom/PraxiomController.h"
 
-#include "Messages.h"
+#include "displayapp/Messages.h"
+#include "BootErrors.h"
+
+#include "utility/StaticStack.h"
+#include "displayapp/Controllers.h"
 
 namespace Pinetime {
+
+  namespace Drivers {
+    class St7789;
+    class Cst816S;
+    class Watchdog;
+  }
+
+  namespace Controllers {
+    class Settings;
+    class Battery;
+    class Ble;
+    class DateTime;
+    class NotificationManager;
+    class HeartRateController;
+    class MotionController;
+    class TouchHandler;
+    class SimpleWeatherService;
+    class MusicService;
+    class NavigationService;
+    class NimbleController;
+  }
+
   namespace System {
     class SystemTask;
-  }
+  };
+
   namespace Applications {
     class DisplayApp {
     public:
+      enum class States { Idle, Running, AOD };
+      enum class FullRefreshDirections { None, Up, Down, Left, Right, LeftAnim, RightAnim };
+
       DisplayApp(Drivers::St7789& lcd,
-                 Components::LittleVgl& lvgl,
-                 Drivers::Cst816S& touchPanel,
-                 Controllers::Battery& batteryController,
-                 Controllers::Ble& bleController,
+                 const Drivers::Cst816S&,
+                 const Controllers::Battery& batteryController,
+                 const Controllers::Ble& bleController,
                  Controllers::DateTime& dateTimeController,
-                 Drivers::WatchdogView& watchdog,
+                 const Drivers::Watchdog& watchdog,
                  Pinetime::Controllers::NotificationManager& notificationManager,
                  Pinetime::Controllers::HeartRateController& heartRateController,
                  Controllers::Settings& settingsController,
                  Pinetime::Controllers::MotorController& motorController,
                  Pinetime::Controllers::MotionController& motionController,
-                 Pinetime::Controllers::TimerController& timerController,
+                 Pinetime::Controllers::StopWatchController& stopWatchController,
                  Pinetime::Controllers::AlarmController& alarmController,
-                 Controllers::BrightnessController& brightnessController,
-                 Controllers::TouchHandler& touchHandler,
-                 Controllers::ButtonHandler& buttonHandler,
-                 Controllers::FS& filesystem,
-                 Controllers::PraxiomController& praxiomController);
-
-      void Start(System::SystemTask* systemTask);
+                 Pinetime::Controllers::BrightnessController& brightnessController,
+                 Pinetime::Controllers::TouchHandler& touchHandler,
+                 Pinetime::Controllers::FS& filesystem,
+                 Pinetime::Drivers::SpiNorFlash& spiNorFlash);
+      void Start(System::BootErrors error);
       void PushMessage(Display::Messages msg);
+
+      void StartApp(Apps app, DisplayApp::FullRefreshDirections direction);
+
+      void SetFullRefresh(FullRefreshDirections direction);
+
+      void Register(Pinetime::System::SystemTask* systemTask);
+      void Register(Pinetime::Controllers::SimpleWeatherService* weatherService);
+      void Register(Pinetime::Controllers::MusicService* musicService);
+      void Register(Pinetime::Controllers::NavigationService* NavigationService);
+      void Register(Pinetime::Controllers::NimbleController* nimbleController);
+      void Register(Pinetime::Controllers::PraxiomService* praxiomService); 
 
     private:
       Pinetime::Drivers::St7789& lcd;
-      Pinetime::Components::LittleVgl& lvgl;
-      Pinetime::Drivers::Cst816S& touchPanel;
-      Controllers::Battery& batteryController;
-      Controllers::Ble& bleController;
-      Controllers::DateTime& dateTimeController;
-      Pinetime::Drivers::WatchdogView& watchdog;
+      const Pinetime::Drivers::Cst816S& touchPanel;
+      const Pinetime::Controllers::Battery& batteryController;
+      const Pinetime::Controllers::Ble& bleController;
+      Pinetime::Controllers::DateTime& dateTimeController;
+      const Pinetime::Drivers::Watchdog& watchdog;
+      Pinetime::System::SystemTask* systemTask = nullptr;
       Pinetime::Controllers::NotificationManager& notificationManager;
       Pinetime::Controllers::HeartRateController& heartRateController;
-      Controllers::Settings& settingsController;
+      Pinetime::Controllers::Settings& settingsController;
       Pinetime::Controllers::MotorController& motorController;
       Pinetime::Controllers::MotionController& motionController;
-      Pinetime::Controllers::TimerController& timerController;
+      Pinetime::Controllers::StopWatchController& stopWatchController;
       Pinetime::Controllers::AlarmController& alarmController;
-      Controllers::BrightnessController& brightnessController;
-      Controllers::TouchHandler& touchHandler;
-      Controllers::ButtonHandler& buttonHandler;
-      Controllers::FS& filesystem;
-      Controllers::PraxiomController& praxiomController;
+      Pinetime::Controllers::BrightnessController& brightnessController;
+      Pinetime::Controllers::TouchHandler& touchHandler;
+      Pinetime::Controllers::FS& filesystem;
+      Pinetime::Drivers::SpiNorFlash& spiNorFlash;
 
-      Pinetime::System::SystemTask* systemTask = nullptr;
+      Pinetime::Controllers::FirmwareValidator validator;
+      Pinetime::Components::LittleVgl lvgl;
+      Pinetime::Controllers::Timer timer;
+
+      AppControllers controllers;
       TaskHandle_t taskHandle;
+
+      States state = States::Running;
       QueueHandle_t msgQueue;
 
       static constexpr uint8_t queueSize = 10;
       static constexpr uint8_t itemSize = 1;
 
       std::unique_ptr<Screens::Screen> currentScreen;
+
       Apps currentApp = Apps::None;
       Apps returnToApp = Apps::None;
-      TouchEvents OnTouchEvent();
+      FullRefreshDirections returnDirection = FullRefreshDirections::None;
+      TouchEvents returnTouchEvent = TouchEvents::None;
 
+      TouchEvents GetGesture();
+      static void Process(void* instance);
+      void Init();
       void Refresh();
-      void ReturnApp(Apps app, FullRefreshDirections direction, TouchEvents touchEvent);
+      void LoadNewScreen(Apps app, DisplayApp::FullRefreshDirections direction);
       void LoadScreen(Apps app, DisplayApp::FullRefreshDirections direction);
       void PushMessageToSystemTask(Pinetime::System::Messages message);
 
-      bool isClock = true;
+      Apps nextApp = Apps::None;
+      DisplayApp::FullRefreshDirections nextDirection;
+      System::BootErrors bootError;
+      void ApplyBrightness();
 
-      Pinetime::Controllers::Timer timer;
+      static constexpr size_t returnAppStackSize = 10;
+      Utility::StaticStack<Apps, returnAppStackSize> returnAppStack;
+      Utility::StaticStack<FullRefreshDirections, returnAppStackSize> appStackDirections;
 
-      void RunningState();
-      void IdleState();
+      bool isDimmed = false;
 
-      TickType_t lastWakeTime;
-      FullRefreshDirections fullRefreshDirection = FullRefreshDirections::None;
-
-      static void Process(void* instance);
-      void DisplayLogo(uint16_t color);
-      void DisplayOtaProgress(uint8_t percent, uint16_t color);
+      TickType_t CalculateSleepTime();
+      TickType_t alwaysOnFrameCount;
+      TickType_t alwaysOnStartTime;
+      // If this is to be changed, make sure the actual always on refresh rate is changed
+      // by configuring the LCD refresh timings
+      static constexpr uint32_t alwaysOnRefreshPeriod = 500;
     };
   }
 }
