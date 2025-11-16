@@ -1,3 +1,4 @@
+#include "components/praxiom/PraxiomController.h"
 #include "displayapp/DisplayApp.h"
 #include <libraries/log/nrf_log.h>
 #include "displayapp/screens/HeartRate.h"
