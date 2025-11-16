@@ -1,6 +1,19 @@
 /*  Copyright (C) 2024 Praxiom Health
 
     This file is part of Praxiom.
+
+    Praxiom is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published
+    by the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Praxiom is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
 #include "components/ble/PraxiomService.h"
@@ -21,10 +34,11 @@ int PraxiomCallback(uint16_t /*connHandle*/, uint16_t /*attrHandle*/, struct ble
 }
 
 PraxiomService::PraxiomService() : basePraxiomAge(0) {
-  // ✅ CRITICAL: Explicitly initialize to 0
-  NRF_LOG_INFO("🎯 PraxiomService constructor - basePraxiomAge initialized to 0");
+  // ✅ CRITICAL: Initialize basePraxiomAge to 0 in constructor initializer list
   
-  // Characteristic definition
+  NRF_LOG_INFO("🎯 PraxiomService constructor - basePraxiomAge = 0");
+  
+  // ✅ CRITICAL: Setup characteristic definition
   characteristicDefinition[0] = {
     .uuid = &praxiomBioAgeCharUuid.u,
     .access_cb = PraxiomCallback,
@@ -34,7 +48,7 @@ PraxiomService::PraxiomService() : basePraxiomAge(0) {
   };
   characteristicDefinition[1] = {0};
 
-  // Service definition
+  // ✅ CRITICAL: Setup service definition
   serviceDefinition[0] = {
     .type = BLE_GATT_SVC_TYPE_PRIMARY,
     .uuid = &praxiomServiceUuid.u,
@@ -47,7 +61,7 @@ void PraxiomService::Init() {
   ble_gatts_count_cfg(serviceDefinition);
   ble_gatts_add_svcs(serviceDefinition);
   
-  NRF_LOG_INFO("🎯 PraxiomService initialized - basePraxiomAge = %d", basePraxiomAge);
+  NRF_LOG_INFO("🎯 PraxiomService initialized - current basePraxiomAge = %lu", basePraxiomAge);
 }
 
 int PraxiomService::OnCommand(struct ble_gatt_access_ctxt* ctxt) {
@@ -62,24 +76,17 @@ int PraxiomService::OnCommand(struct ble_gatt_access_ctxt* ctxt) {
     if (OS_MBUF_PKTLEN(buffer) == sizeof(uint32_t)) {
       uint32_t receivedAge = ToUInt32(dataBuffer);
       
-      NRF_LOG_INFO("📊 Raw bytes: [%d, %d, %d, %d]", 
+      NRF_LOG_INFO("📊 Raw bytes: [%u, %u, %u, %u]", 
                    dataBuffer[0], dataBuffer[1], dataBuffer[2], dataBuffer[3]);
       NRF_LOG_INFO("📊 Converted to uint32: %lu", receivedAge);
+      NRF_LOG_INFO("📝 Before: basePraxiomAge = %lu", basePraxiomAge);
       
-      // ✅ VALIDATION: Only accept reasonable ages
-      if (receivedAge >= 18 && receivedAge <= 120) {
-        NRF_LOG_INFO("📝 Before: basePraxiomAge = %lu", basePraxiomAge);
-        basePraxiomAge = receivedAge;
-        NRF_LOG_INFO("✅ After: basePraxiomAge = %lu (VALID)", basePraxiomAge);
-      } else if (receivedAge == 0) {
-        // Allow 0 as "reset" value
-        basePraxiomAge = 0;
-        NRF_LOG_INFO("✅ Reset: basePraxiomAge = 0");
-      } else {
-        NRF_LOG_WARNING("⚠️ REJECTED: Invalid age %lu (must be 0 or 18-120)", receivedAge);
-      }
+      // ✅ Store the value (validation happens in WatchFaceDigital)
+      basePraxiomAge = receivedAge;
+      
+      NRF_LOG_INFO("✅ After: basePraxiomAge = %lu", basePraxiomAge);
     } else {
-      NRF_LOG_WARNING("⚠️ Invalid data length: %d (expected 4)", OS_MBUF_PKTLEN(buffer));
+      NRF_LOG_WARNING("⚠️ Invalid Praxiom Age data length: %d (expected 4)", OS_MBUF_PKTLEN(buffer));
     }
     
     return 0;
