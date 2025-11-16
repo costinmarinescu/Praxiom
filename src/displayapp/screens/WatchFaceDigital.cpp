@@ -1,17 +1,20 @@
 #include "displayapp/screens/WatchFaceDigital.h"
 
+#include <date/date.h>
 #include <lvgl/lvgl.h>
 #include <cstdio>
 #include "displayapp/screens/BatteryIcon.h"
 #include "displayapp/screens/BleIcon.h"
 #include "displayapp/screens/Symbols.h"
 #include "displayapp/screens/NotificationIcon.h"
-#include "components/settings/Settings.h"
+#include "components/battery/BatteryController.h"
 #include "components/ble/BleController.h"
 #include "components/ble/NotificationManager.h"
-#include "components/battery/BatteryController.h"
 #include "components/ble/SimpleWeatherService.h"
+#include "components/settings/Settings.h"
+#include "components/heartrate/HeartRateController.h"
 #include "components/motion/MotionController.h"
+#include "components/praxiom/PraxiomController.h"
 
 using namespace Pinetime::Applications::Screens;
 
@@ -21,10 +24,7 @@ namespace {
   constexpr int16_t POS_Y_PLUS_WEATHER = -33;
   constexpr int16_t POS_X_WEATHER_ICON = -10;
   constexpr int16_t POS_X_TEMP = 55;
-  constexpr int16_t POS_X_PLUS_HUMIDITY = 95;
   constexpr int16_t POS_X_DATE = 0;
-  constexpr int16_t POS_X_DAYOFWEEK = -20;
-  constexpr int16_t POS_X_PLUS_MONTH = 60;
 }
 
 WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
@@ -34,7 +34,8 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
                                    Controllers::Settings& settingsController,
                                    Controllers::HeartRateController& heartRateController,
                                    Controllers::MotionController& motionController,
-                                   Controllers::SimpleWeatherService& weatherService)
+                                   Controllers::SimpleWeatherService& weatherService,
+                                   Controllers::PraxiomController& praxiomController)
   : currentDateTime {{}},
     dateTimeController {dateTimeController},
     batteryController {batteryController},
@@ -44,6 +45,7 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
     heartRateController {heartRateController},
     motionController {motionController},
     weatherService {weatherService},
+    praxiomController {praxiomController},
     statusIcons(batteryController, bleController) {
 
   statusIcons.Create();
@@ -87,13 +89,13 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
   label_bio_age_title = lv_label_create(lv_scr_act(), nullptr);
   lv_obj_set_style_local_text_color(label_bio_age_title, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_WHITE);
   lv_obj_set_style_local_text_font(label_bio_age_title, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_bold_20);
-  lv_label_set_text_static(label_bio_age_title, "PRAXIOM AGE");
-  lv_obj_align(label_bio_age_title, nullptr, LV_ALIGN_CENTER, 0, 60);
+  lv_label_set_text_static(label_bio_age_title, PRAXIOM_TITLE);
+  lv_obj_align(label_bio_age_title, nullptr, LV_ALIGN_CENTER, 0, 55);
 
   label_bio_age = lv_label_create(lv_scr_act(), nullptr);
-  lv_obj_set_style_local_text_font(label_bio_age, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_76);
+  lv_obj_set_style_local_text_font(label_bio_age, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_42);
   lv_obj_set_style_local_text_color(label_bio_age, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x00FF00));
-  lv_label_set_text_static(label_bio_age, "--");
+  lv_label_set_text_static(label_bio_age, BIO_AGE_PLACEHOLDER);
   lv_obj_align(label_bio_age, label_bio_age_title, LV_ALIGN_OUT_BOTTOM_MID, 0, 5);
 
   heartbeatIcon = lv_label_create(lv_scr_act(), nullptr);
@@ -154,9 +156,9 @@ void WatchFaceDigital::Refresh() {
     auto yearMonthDay = date::year_month_day(dp);
 
     auto year = static_cast<int>(yearMonthDay.year());
-    auto month = static_cast<unsigned>(yearMonthDay.month());
+    auto month = static_cast<Pinetime::Controllers::DateTime::Months>(static_cast<unsigned>(yearMonthDay.month()));
     auto day = static_cast<unsigned>(yearMonthDay.day());
-    auto dayOfWeek = static_cast<unsigned>(date::weekday(yearMonthDay).iso_encoding());
+    auto dayOfWeek = static_cast<Pinetime::Controllers::DateTime::Days>(date::weekday(yearMonthDay).iso_encoding());
 
     uint8_t hour = time.hours().count();
     uint8_t minute = time.minutes().count();
@@ -186,14 +188,14 @@ void WatchFaceDigital::Refresh() {
       if (settingsController.GetClockType() == Controllers::Settings::ClockType::H24) {
         lv_label_set_text_fmt(label_date,
                              "%s %02d %s",
-                             dateTimeController.DayOfWeekShortToString(static_cast<Controllers::DateTime::Days>(dayOfWeek)),
+                             dateTimeController.DayOfWeekShortToString(dayOfWeek),
                              day,
-                             dateTimeController.MonthShortToString(static_cast<Controllers::DateTime::Months>(month)));
+                             dateTimeController.MonthShortToString(month));
       } else {
         lv_label_set_text_fmt(label_date,
                              "%s %s %02d",
-                             dateTimeController.DayOfWeekShortToString(static_cast<Controllers::DateTime::Days>(dayOfWeek)),
-                             dateTimeController.MonthShortToString(static_cast<Controllers::DateTime::Months>(month)),
+                             dateTimeController.DayOfWeekShortToString(dayOfWeek),
+                             dateTimeController.MonthShortToString(month),
                              day);
       }
 
@@ -204,10 +206,17 @@ void WatchFaceDigital::Refresh() {
     }
   }
 
-  // Update Bio-Age display (received via BLE custom characteristic)
-  // This will be populated when the mobile app sends the biological age
-  // For now, show placeholder until data is received
-  // TODO: Integrate with BLE characteristic that receives bio-age from app
+  // Update Bio-Age from PraxiomController
+  if (praxiomController.HasBioAge()) {
+    float bioAge = praxiomController.GetBioAge();
+    lv_label_set_text_fmt(label_bio_age, "%.1f", bioAge);
+    lv_obj_set_style_local_text_color(label_bio_age, LV_LABEL_PART_MAIN, 
+                                      LV_STATE_DEFAULT, lv_color_hex(0x00FF00));
+  } else {
+    lv_label_set_text_static(label_bio_age, BIO_AGE_PLACEHOLDER);
+    lv_obj_set_style_local_text_color(label_bio_age, LV_LABEL_PART_MAIN, 
+                                      LV_STATE_DEFAULT, LV_COLOR_WHITE);
+  }
   
   heartbeat = heartRateController.HeartRate();
   heartbeatRunning = heartRateController.State() != Controllers::HeartRateController::States::Stopped;
@@ -252,16 +261,4 @@ void WatchFaceDigital::Refresh() {
     lv_obj_realign(temperature);
     lv_obj_realign(weatherIcon);
   }
-}
-
-// Method to update bio-age from BLE (to be called by BLE service)
-void WatchFaceDigital::SetBioAge(float age) {
-  if (age > 0) {
-    lv_label_set_text_fmt(label_bio_age, "%.1f", age);
-    lv_obj_set_style_local_text_color(label_bio_age, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x00FF00));
-  } else {
-    lv_label_set_text_static(label_bio_age, "--");
-    lv_obj_set_style_local_text_color(label_bio_age, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_WHITE);
-  }
-  lv_obj_realign(label_bio_age);
 }
