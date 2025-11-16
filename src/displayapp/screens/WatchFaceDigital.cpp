@@ -14,7 +14,6 @@
 #include "components/heartrate/HeartRateController.h"
 #include "components/motion/MotionController.h"
 #include "components/settings/Settings.h"
-#include <nrf_log.h>
 
 using namespace Pinetime::Applications::Screens;
 
@@ -44,9 +43,7 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
     basePraxiomAge(0),
     lastSyncTime(0) {
 
-  NRF_LOG_INFO("🎯 WatchFaceDigital constructor starting");
-
-  // Create Praxiom brand gradient background (Orange/Amber to Teal/Cyan)
+  // Create Praxiom brand gradient background
   lv_obj_t* background_gradient = lv_obj_create(lv_scr_act(), nullptr);
   lv_obj_set_size(background_gradient, 240, 240);
   lv_obj_set_pos(background_gradient, 0, 0);
@@ -59,21 +56,19 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
   statusIcons.Create();
   lv_obj_align(statusIcons.GetObject(), lv_scr_act(), LV_ALIGN_IN_TOP_RIGHT, -8, 0);
 
-  // Create and position Praxiom Age label (text) - WHITE
+  // Praxiom Age label - WHITE
   labelPraxiomAge = lv_label_create(lv_scr_act(), nullptr);
   lv_label_set_text_static(labelPraxiomAge, "Praxiom Age");
   lv_obj_set_style_local_text_font(labelPraxiomAge, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_bold_20);
   lv_obj_set_style_local_text_color(labelPraxiomAge, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));
   lv_obj_align(labelPraxiomAge, lv_scr_act(), LV_ALIGN_CENTER, 0, -80);
 
-  // Create age number label - TEST: Start with static "88" to verify font works
+  // Age number label
   labelPraxiomAgeNumber = lv_label_create(lv_scr_act(), nullptr);
   lv_obj_set_style_local_text_font(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_42);
-  lv_label_set_text_static(labelPraxiomAgeNumber, "88");  // TEST value
+  lv_label_set_text_static(labelPraxiomAgeNumber, "0");
   lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));
   lv_obj_align(labelPraxiomAgeNumber, lv_scr_act(), LV_ALIGN_CENTER, 0, -10);
-
-  NRF_LOG_INFO("🎯 Created age label with test value 88");
 
   // Time label - BLACK
   label_time = lv_label_create(lv_scr_act(), nullptr);
@@ -88,7 +83,7 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
   lv_obj_set_style_local_text_color(label_date, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x000000));
   lv_obj_align(label_date, lv_scr_act(), LV_ALIGN_CENTER, 0, 90);
 
-  // Heart rate icon and label - BLACK
+  // Heart rate - BLACK
   heartbeatIcon = lv_label_create(lv_scr_act(), nullptr);
   lv_label_set_text_static(heartbeatIcon, Symbols::heartBeat);
   lv_obj_set_style_local_text_color(heartbeatIcon, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x000000));
@@ -99,7 +94,7 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
   lv_label_set_text_static(heartbeatValue, "");
   lv_obj_align(heartbeatValue, heartbeatIcon, LV_ALIGN_OUT_RIGHT_MID, 5, 0);
 
-  // Step icon and label - BLACK
+  // Steps - BLACK
   stepIcon = lv_label_create(lv_scr_act(), nullptr);
   lv_obj_set_style_local_text_color(stepIcon, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x000000));
   lv_label_set_text_static(stepIcon, Symbols::shoe);
@@ -110,16 +105,13 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
   lv_label_set_text_static(stepValue, "0");
   lv_obj_align(stepValue, stepIcon, LV_ALIGN_OUT_LEFT_MID, -5, 0);
 
-  // Notification icon - BLACK
+  // Notification - BLACK
   notificationIcon = lv_label_create(lv_scr_act(), nullptr);
   lv_obj_set_style_local_text_color(notificationIcon, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x000000));
   lv_label_set_text_static(notificationIcon, NotificationIcon::GetIcon(false));
   lv_obj_align(notificationIcon, nullptr, LV_ALIGN_IN_TOP_LEFT, 0, 0);
 
   taskRefresh = lv_task_create(RefreshTaskCallback, LV_DISP_DEF_REFR_PERIOD, LV_TASK_PRIO_MID, this);
-  
-  NRF_LOG_INFO("🎯 WatchFaceDigital constructor complete");
-  
   Refresh();
 }
 
@@ -144,9 +136,6 @@ lv_color_t WatchFaceDigital::GetPraxiomAgeColor(int currentAge, int baseAge) {
 }
 
 void WatchFaceDigital::Refresh() {
-  static int refreshCount = 0;
-  refreshCount++;
-  
   statusIcons.Update();
 
   if (notificationState.IsUpdated()) {
@@ -158,8 +147,6 @@ void WatchFaceDigital::Refresh() {
   if (currentDateTime.IsUpdated()) {
     uint8_t hour = dateTimeController.Hours();
     uint8_t minute = dateTimeController.Minutes();
-
-    // Update time
     lv_label_set_text_fmt(label_time, "%02d:%02d", hour, minute);
 
     currentDate = std::chrono::time_point_cast<std::chrono::days>(currentDateTime.Get());
@@ -193,30 +180,31 @@ void WatchFaceDigital::Refresh() {
     lv_obj_realign(stepValue);
   }
 
-  // 🔍 DIAGNOSTIC Bio-Age update with extensive logging
-  static uint32_t lastLoggedAge = 999;
-  uint32_t bleAge = praxiomService.GetBasePraxiomAge();
+  // ✅ FIXED Bio-Age update - proper bounds checking and safe conversion
+  uint32_t rawAge = praxiomService.GetBasePraxiomAge();
   
-  // Log every 60 refreshes (about once per second) OR when value changes
-  if (refreshCount % 60 == 0 || bleAge != lastLoggedAge) {
-    NRF_LOG_INFO("🔍 Refresh #%d: bleAge=%d, lastLoggedAge=%d", refreshCount, bleAge, lastLoggedAge);
-    lastLoggedAge = bleAge;
-  }
-  
-  if (bleAge > 0) {
-    int ageToDisplay = static_cast<int>(bleAge);
+  // Strict validation: only accept reasonable ages
+  if (rawAge >= 18 && rawAge <= 120) {
+    // Valid age range - safe to display
+    int ageInt = static_cast<int>(rawAge);
     
-    if (ageToDisplay != basePraxiomAge) {
-      NRF_LOG_INFO("✏️ UPDATING DISPLAY: %d -> %d", basePraxiomAge, ageToDisplay);
-      basePraxiomAge = ageToDisplay;
-      
-      // Try lv_label_set_text_fmt (same as time display)
+    if (ageInt != basePraxiomAge) {
+      basePraxiomAge = ageInt;
       lv_label_set_text_fmt(labelPraxiomAgeNumber, "%d", basePraxiomAge);
       lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, 
-        LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x00FF00));
+        LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x00FF00));  // GREEN
       lv_obj_realign(labelPraxiomAgeNumber);
-      
-      NRF_LOG_INFO("✅ Display updated to: %d", basePraxiomAge);
+    }
+  } else if (rawAge == 0) {
+    // Zero means no data yet - show 0 in white
+    if (basePraxiomAge != 0) {
+      basePraxiomAge = 0;
+      lv_label_set_text_fmt(labelPraxiomAgeNumber, "%d", 0);
+      lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, 
+        LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));  // WHITE
+      lv_obj_realign(labelPraxiomAgeNumber);
     }
   }
+  // If rawAge is out of bounds (like 570640687), don't update display
+  // Just leave it at the last valid value or 0
 }
