@@ -23,7 +23,7 @@
 #include "NavigationService.h"
 #include "ServiceDiscovery.h"
 #include "SimpleWeatherService.h"
-#include "PraxiomService.h"  // ← ADDED
+#include "PraxiomService.h"  // ✅ Praxiom service
 
 namespace Pinetime {
   namespace Drivers {
@@ -77,7 +77,7 @@ namespace Pinetime {
       Pinetime::Controllers::SimpleWeatherService& GetWeatherService() {
         return weatherService;
       }
-      Pinetime::Controllers::PraxiomService& GetPraxiomService() {  // ← ADDED
+      Pinetime::Controllers::PraxiomService& GetPraxiomService() {  // ✅ Praxiom accessor
         return praxiomService;
       }
 
@@ -115,6 +115,10 @@ namespace Pinetime {
 
       void EnableRadio();
       void DisableRadio();
+      
+      // ✅ NEW: Sensor broadcasting control methods
+      void EnableContinuousSensorBroadcasting();
+      void DisableContinuousSensorBroadcasting();
 
     private:
       void PersistBond(struct ble_gap_conn_desc& desc);
@@ -141,8 +145,8 @@ namespace Pinetime {
       BatteryInformationService batteryInformationService;
       ImmediateAlertService immediateAlertService;
       HeartRateService heartRateService;
-      MotionService motionService;  // ← ADDED
-      PraxiomService praxiomService;  // ← ADDED
+      MotionService motionService;      // ✅ Motion service
+      PraxiomService praxiomService;    // ✅ Praxiom service
       ServiceDiscovery serviceDiscovery;
 
       uint8_t addrType;
