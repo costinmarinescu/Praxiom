@@ -32,16 +32,18 @@ namespace Pinetime {
       static constexpr uint16_t praxiomServiceId {0x1900};
       static constexpr uint16_t praxiomBioAgeCharId {0x1901};
 
-      // Service UUID: 00001900-78fc-48fe-8e23-433b3a1942d0
+      // Service UUID: 00190000-78fc-48fe-8e23-433b3a1942d0
       static constexpr ble_uuid128_t praxiomServiceUuid {
         .u = {.type = BLE_UUID_TYPE_128},
         .value = {0xd0, 0x42, 0x19, 0x3a, 0x3b, 0x43, 0x23, 0x8e, 0xfe, 0x48, 0xfc, 0x78, 0x00, 0x00, 0x19, 0x00}
       };
 
-      // Bio-Age Characteristic UUID: 00001901-78fc-48fe-8e23-433b3a1942d0
+      // ✅ FIXED: Bio-Age Characteristic UUID: 00190100-78fc-48fe-8e23-433b3a1942d0
+      // The last 4 bytes are in little-endian format: {ID_LOW, ID_HIGH, SERVICE_LOW, SERVICE_HIGH}
+      // For 0x1901 (characteristic) within 0x1900 (service), we need: {0x00, 0x01, 0x00, 0x19}
       static constexpr ble_uuid128_t praxiomBioAgeCharUuid {
         .u = {.type = BLE_UUID_TYPE_128},
-        .value = {0xd0, 0x42, 0x19, 0x3a, 0x3b, 0x43, 0x23, 0x8e, 0xfe, 0x48, 0xfc, 0x78, 0x01, 0x00, 0x19, 0x00}
+        .value = {0xd0, 0x42, 0x19, 0x3a, 0x3b, 0x43, 0x23, 0x8e, 0xfe, 0x48, 0xfc, 0x78, 0x00, 0x01, 0x00, 0x19}
       };
 
       struct ble_gatt_chr_def characteristicDefinition[2];
