@@ -180,16 +180,20 @@ void WatchFaceDigital::Refresh() {
     lv_obj_realign(stepValue);
   }
 
-  // ✅ FIXED Bio-Age update - proper bounds checking and safe conversion
+  // ✅ FIXED Bio-Age update - proper conversion from transmitted format
+  // Mobile app sends: age * 10 (e.g., 45.3 → 453)
+  // We receive: 453 as uint32
+  // We display: 45 (divide by 10, show as integer)
+  
   uint32_t rawAge = praxiomService.GetBasePraxiomAge();
   
-  // Strict validation: only accept reasonable ages
-  if (rawAge >= 18 && rawAge <= 120) {
-    // Valid age range - safe to display
-    int ageInt = static_cast<int>(rawAge);
+  // First, check if this is valid transmitted data (180-1200 = ages 18.0 to 120.0)
+  if (rawAge >= 180 && rawAge <= 1200) {
+    // Valid transmitted age - convert to display format
+    int displayAge = static_cast<int>(rawAge / 10);  // 453 / 10 = 45
     
-    if (ageInt != basePraxiomAge) {
-      basePraxiomAge = ageInt;
+    if (displayAge != basePraxiomAge) {
+      basePraxiomAge = displayAge;
       lv_label_set_text_fmt(labelPraxiomAgeNumber, "%d", basePraxiomAge);
       lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, 
         LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x00FF00));  // GREEN
@@ -205,6 +209,6 @@ void WatchFaceDigital::Refresh() {
       lv_obj_realign(labelPraxiomAgeNumber);
     }
   }
-  // If rawAge is out of bounds (like 570640687), don't update display
-  // Just leave it at the last valid value or 0
+  // If rawAge is out of valid transmitted range (e.g., 1-179 or >1200), 
+  // don't update display - could be garbage or invalid data
 }
