@@ -20,6 +20,7 @@ using namespace Pinetime::Applications::Screens;
 // Declare the fonts we need
 extern lv_font_t jetbrains_mono_bold_20;
 extern lv_font_t jetbrains_mono_42;
+extern lv_font_t jetbrains_mono_76;  // ✅ LARGER FONT for Praxiom Age
 
 WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
                                    const Controllers::Battery& batteryController,
@@ -56,32 +57,32 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
   statusIcons.Create();
   lv_obj_align(statusIcons.GetObject(), lv_scr_act(), LV_ALIGN_IN_TOP_RIGHT, -8, 0);
 
-  // Praxiom Age label - WHITE
+  // ✅ BIGGER: Praxiom Age label - WHITE
   labelPraxiomAge = lv_label_create(lv_scr_act(), nullptr);
   lv_label_set_text_static(labelPraxiomAge, "Praxiom Age");
   lv_obj_set_style_local_text_font(labelPraxiomAge, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_bold_20);
   lv_obj_set_style_local_text_color(labelPraxiomAge, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));
-  lv_obj_align(labelPraxiomAge, lv_scr_act(), LV_ALIGN_CENTER, 0, -80);
+  lv_obj_align(labelPraxiomAge, lv_scr_act(), LV_ALIGN_CENTER, 0, -85);  // Moved up slightly
 
-  // Age number label
+  // ✅ MUCH BIGGER: Age number label - now using 76pt font instead of 42pt
   labelPraxiomAgeNumber = lv_label_create(lv_scr_act(), nullptr);
-  lv_obj_set_style_local_text_font(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_42);
+  lv_obj_set_style_local_text_font(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_76);  // ← BIGGER!
   lv_label_set_text_static(labelPraxiomAgeNumber, "0");
   lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));
-  lv_obj_align(labelPraxiomAgeNumber, lv_scr_act(), LV_ALIGN_CENTER, 0, -10);
+  lv_obj_align(labelPraxiomAgeNumber, lv_scr_act(), LV_ALIGN_CENTER, 0, -15);  // Adjusted position for larger font
 
-  // Time label - BLACK
+  // Time label - BLACK (stays same size 42pt)
   label_time = lv_label_create(lv_scr_act(), nullptr);
   lv_obj_set_style_local_text_font(label_time, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_42);
   lv_obj_set_style_local_text_color(label_time, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x000000));
   lv_label_set_text_static(label_time, "00:00");
-  lv_obj_align(label_time, lv_scr_act(), LV_ALIGN_CENTER, 0, 55);
+  lv_obj_align(label_time, lv_scr_act(), LV_ALIGN_CENTER, 0, 60);  // Moved down slightly to make room
 
   // Date label - BLACK
   label_date = lv_label_create(lv_scr_act(), nullptr);
   lv_obj_set_style_local_text_font(label_date, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_bold_20);
   lv_obj_set_style_local_text_color(label_date, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x000000));
-  lv_obj_align(label_date, lv_scr_act(), LV_ALIGN_CENTER, 0, 90);
+  lv_obj_align(label_date, lv_scr_act(), LV_ALIGN_CENTER, 0, 95);
 
   // Heart rate - BLACK
   heartbeatIcon = lv_label_create(lv_scr_act(), nullptr);
@@ -180,23 +181,19 @@ void WatchFaceDigital::Refresh() {
     lv_obj_realign(stepValue);
   }
 
-  // ✅ FIXED Bio-Age update - proper conversion from transmitted format
-  // Mobile app sends: age * 10 (e.g., 45.3 → 453)
-  // We receive: 453 as uint32
-  // We display: 45 (divide by 10, show as integer)
-  
+  // ✅ Bio-Age update - proper conversion and validation
   uint32_t rawAge = praxiomService.GetBasePraxiomAge();
   
-  // First, check if this is valid transmitted data (180-1200 = ages 18.0 to 120.0)
+  // Validate transmitted data range (180-1200 = ages 18.0 to 120.0)
   if (rawAge >= 180 && rawAge <= 1200) {
     // Valid transmitted age - convert to display format
-    int displayAge = static_cast<int>(rawAge / 10);  // 453 / 10 = 45
+    int displayAge = static_cast<int>(rawAge / 10);  // e.g., 593 / 10 = 59
     
     if (displayAge != basePraxiomAge) {
       basePraxiomAge = displayAge;
       lv_label_set_text_fmt(labelPraxiomAgeNumber, "%d", basePraxiomAge);
       lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, 
-        LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x00FF00));  // GREEN
+        LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x00FF00));  // GREEN when updated
       lv_obj_realign(labelPraxiomAgeNumber);
     }
   } else if (rawAge == 0) {
@@ -205,10 +202,9 @@ void WatchFaceDigital::Refresh() {
       basePraxiomAge = 0;
       lv_label_set_text_fmt(labelPraxiomAgeNumber, "%d", 0);
       lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, 
-        LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));  // WHITE
+        LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));  // WHITE for no data
       lv_obj_realign(labelPraxiomAgeNumber);
     }
   }
-  // If rawAge is out of valid transmitted range (e.g., 1-179 or >1200), 
-  // don't update display - could be garbage or invalid data
+  // If rawAge is out of valid transmitted range, don't update display
 }
