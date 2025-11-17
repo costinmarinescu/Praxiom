@@ -41,7 +41,8 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
     praxiomService {praxiomService},
     statusIcons(batteryController, bleController, alarmController),
     basePraxiomAge(0),
-    lastSyncTime(0) {
+    lastSyncTime(0),
+    lastDisplayedAge(0) {  // ✅ ADDED: Track last displayed value
 
   // Create Praxiom brand gradient background
   lv_obj_t* background_gradient = lv_obj_create(lv_scr_act(), nullptr);
@@ -63,10 +64,10 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
   lv_obj_set_style_local_text_color(labelPraxiomAge, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));
   lv_obj_align(labelPraxiomAge, lv_scr_act(), LV_ALIGN_CENTER, 0, -80);
 
-  // Age number label
+  // Age number label - starts WHITE (waiting for data)
   labelPraxiomAgeNumber = lv_label_create(lv_scr_act(), nullptr);
   lv_obj_set_style_local_text_font(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_42);
-  lv_label_set_text_static(labelPraxiomAgeNumber, "0");
+  lv_label_set_text_static(labelPraxiomAgeNumber, "--");  // ✅ CHANGED: Show -- when no data
   lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));
   lv_obj_align(labelPraxiomAgeNumber, lv_scr_act(), LV_ALIGN_CENTER, 0, -10);
 
@@ -112,6 +113,8 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
   lv_obj_align(notificationIcon, nullptr, LV_ALIGN_IN_TOP_LEFT, 0, 0);
 
   taskRefresh = lv_task_create(RefreshTaskCallback, LV_DISP_DEF_REFR_PERIOD, LV_TASK_PRIO_MID, this);
+  
+  NRF_LOG_INFO("✅ WatchFaceDigital initialized - waiting for Bio-Age data");
   Refresh();
 }
 
@@ -123,6 +126,7 @@ WatchFaceDigital::~WatchFaceDigital() {
 void WatchFaceDigital::UpdateBasePraxiomAge(int age) {
   basePraxiomAge = age;
   lastSyncTime = dateTimeController.CurrentDateTime().time_since_epoch().count();
+  NRF_LOG_INFO("📱 Bio-Age updated via UpdateBasePraxiomAge: %d", age);
 }
 
 int WatchFaceDigital::GetCurrentPraxiomAge() {
@@ -130,9 +134,14 @@ int WatchFaceDigital::GetCurrentPraxiomAge() {
 }
 
 lv_color_t WatchFaceDigital::GetPraxiomAgeColor(int currentAge, int baseAge) {
-  (void)currentAge;
-  (void)baseAge;
-  return lv_color_hex(0xFFFFFF);
+  // ✅ SIMPLIFIED: Just return colors based on state
+  if (currentAge == 0) {
+    return lv_color_hex(0xFFFFFF);  // WHITE = waiting for data
+  } else if (currentAge != lastDisplayedAge) {
+    return lv_color_hex(0x00FF00);  // GREEN = new data received
+  } else {
+    return lv_color_hex(0xFFFFFF);  // WHITE = stable
+  }
 }
 
 void WatchFaceDigital::Refresh() {
@@ -180,31 +189,56 @@ void WatchFaceDigital::Refresh() {
     lv_obj_realign(stepValue);
   }
 
-  // ✅ FIXED Bio-Age update - proper bounds checking and safe conversion
+  // ✅ IMPROVED Bio-Age update logic
   uint32_t rawAge = praxiomService.GetBasePraxiomAge();
   
-  // Strict validation: only accept reasonable ages
+  NRF_LOG_INFO("🔍 Refresh: rawAge from PraxiomService = %lu", rawAge);
+  
+  // ✅ FIX: Always update display when value changes OR every 10 seconds to show we're alive
+  static uint32_t refreshCounter = 0;
+  refreshCounter++;
+  bool forceUpdate = (refreshCounter % 100 == 0);  // Force update every ~10 seconds
+  
   if (rawAge >= 18 && rawAge <= 120) {
     // Valid age range - safe to display
     int ageInt = static_cast<int>(rawAge);
     
-    if (ageInt != basePraxiomAge) {
+    // ✅ UPDATE ALWAYS when value changes, or periodically
+    if (ageInt != lastDisplayedAge || forceUpdate) {
+      NRF_LOG_INFO("✅ Updating Bio-Age display: %d (was %d)", ageInt, lastDisplayedAge);
+      
       basePraxiomAge = ageInt;
       lv_label_set_text_fmt(labelPraxiomAgeNumber, "%d", basePraxiomAge);
+      
+      // Determine color based on whether value changed
+      lv_color_t color;
+      if (ageInt != lastDisplayedAge) {
+        color = lv_color_hex(0x00FF00);  // GREEN when new data arrives
+        NRF_LOG_INFO("🟢 Bio-Age CHANGED: displaying in GREEN");
+      } else {
+        color = lv_color_hex(0xFFFFFF);  // WHITE when stable
+      }
+      
       lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, 
-        LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x00FF00));  // GREEN
+        LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, color);
       lv_obj_realign(labelPraxiomAgeNumber);
+      
+      lastDisplayedAge = ageInt;
     }
   } else if (rawAge == 0) {
-    // Zero means no data yet - show 0 in white
-    if (basePraxiomAge != 0) {
+    // Zero means no data yet - show placeholder
+    if (lastDisplayedAge != 0 || forceUpdate) {
+      NRF_LOG_INFO("⚪ No Bio-Age data yet - showing placeholder");
       basePraxiomAge = 0;
-      lv_label_set_text_fmt(labelPraxiomAgeNumber, "%d", 0);
+      lastDisplayedAge = 0;
+      lv_label_set_text_static(labelPraxiomAgeNumber, "--");
       lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, 
         LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));  // WHITE
       lv_obj_realign(labelPraxiomAgeNumber);
     }
+  } else {
+    // Invalid value (like 570640687) - log warning but don't update display
+    NRF_LOG_WARNING("⚠️ Invalid Bio-Age value received: %lu (ignoring)", rawAge);
+    // Keep showing last valid value or placeholder
   }
-  // If rawAge is out of bounds (like 570640687), don't update display
-  // Just leave it at the last valid value or 0
 }

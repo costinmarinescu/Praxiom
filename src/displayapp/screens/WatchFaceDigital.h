@@ -84,11 +84,10 @@ namespace Pinetime {
         // Praxiom Age variables
         int basePraxiomAge;      // Biological age from phone app biomarker calculation
         uint64_t lastSyncTime;   // Last sync timestamp
+        int lastDisplayedAge;    // ✅ ADDED: Track what we last showed to detect changes
         
-        // Helper function - simplified, no longer calculates adjustments
+        // Helper function to determine display color
         lv_color_t GetPraxiomAgeColor(int currentAge, int baseAge);
-        
-        // NOTE: CalculateRealtimeAdjustment() removed - was causing incorrect display values
       };
     }
 
@@ -98,6 +97,14 @@ namespace Pinetime {
       static constexpr const char* name = "Digital face";
 
       static Screens::Screen* Create(AppControllers& controllers) {
+        // ✅ CRITICAL: Verify praxiomService pointer is not null before creating screen
+        if (controllers.praxiomService == nullptr) {
+          NRF_LOG_ERROR("❌ ERROR: praxiomService is NULL! Cannot create WatchFaceDigital");
+          // Return a fallback or crash - this should never happen if SystemTask registered properly
+          return nullptr;
+        }
+        
+        NRF_LOG_INFO("✅ Creating WatchFaceDigital with valid PraxiomService");
         return new Screens::WatchFaceDigital(controllers.dateTimeController,
                                              controllers.batteryController,
                                              controllers.bleController,
@@ -107,7 +114,7 @@ namespace Pinetime {
                                              controllers.heartRateController,
                                              controllers.motionController,
                                              *controllers.weatherController,
-                                             controllers.nimbleController->GetPraxiomService());
+                                             *controllers.praxiomService);  // ✅ Dereference pointer
       };
 
       static bool IsAvailable(Pinetime::Controllers::FS& /*filesystem*/) {
