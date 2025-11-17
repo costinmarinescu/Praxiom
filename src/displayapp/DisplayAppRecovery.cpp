@@ -123,3 +123,8 @@ void DisplayApp::Register(Pinetime::Controllers::MusicService* /*musicService*/)
 
 void DisplayApp::Register(Pinetime::Controllers::NavigationService* /*NavigationService*/) {
 }
+
+// ✅ ADDED: NimbleController registration (no-op for recovery firmware)
+void DisplayApp::Register(Pinetime::Controllers::NimbleController* /*nimbleController*/) {
+  // Recovery firmware doesn't need nimbleController, so this is a no-op
+}
