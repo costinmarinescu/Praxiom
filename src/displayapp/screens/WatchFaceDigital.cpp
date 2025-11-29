@@ -76,13 +76,13 @@ WatchFaceDigital::WatchFaceDigital(Controllers::DateTime& dateTimeController,
   lv_obj_set_style_local_text_font(label_time, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_42);
   lv_obj_set_style_local_text_color(label_time, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x000000));
   lv_label_set_text_static(label_time, "00:00");
-  lv_obj_align(label_time, lv_scr_act(), LV_ALIGN_CENTER, 0, 60);  // Moved down slightly to make room
+  lv_obj_align(label_time, lv_scr_act(), LV_ALIGN_CENTER, 0, 50);  // Moved up for spacing from steps
 
   // Date label - BLACK
   label_date = lv_label_create(lv_scr_act(), nullptr);
   lv_obj_set_style_local_text_font(label_date, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &jetbrains_mono_bold_20);
   lv_obj_set_style_local_text_color(label_date, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x000000));
-  lv_obj_align(label_date, lv_scr_act(), LV_ALIGN_CENTER, 0, 95);
+  lv_obj_align(label_date, lv_scr_act(), LV_ALIGN_CENTER, 0, 85);  // Moved up for spacing from steps
 
   // Heart rate - BLACK
   heartbeatIcon = lv_label_create(lv_scr_act(), nullptr);
@@ -193,7 +193,7 @@ void WatchFaceDigital::Refresh() {
       basePraxiomAge = displayAge;
       lv_label_set_text_fmt(labelPraxiomAgeNumber, "%d", basePraxiomAge);
       lv_obj_set_style_local_text_color(labelPraxiomAgeNumber, 
-        LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0x00FF00));  // GREEN when updated
+        LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xFFFFFF));  // WHITE
       lv_obj_realign(labelPraxiomAgeNumber);
     }
   } else if (rawAge == 0) {
